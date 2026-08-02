@@ -1,0 +1,10 @@
+# Normalise line endings so Windows/WSL contributors don't churn diffs.
+* text=auto eol=lf
+
+# Test fixtures are byte-exact captures of Claude Code transcripts.
+# Never let git rewrite them.
+tests/fixtures/**  -text
+**/fixtures/**     -text
+*.jsonl            -text
+
+pnpm-lock.yaml     linguist-generated=true -diff

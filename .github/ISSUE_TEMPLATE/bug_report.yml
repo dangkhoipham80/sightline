@@ -1,0 +1,47 @@
+name: Bug report
+description: Something Sightline does wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, what you got instead.
+    validations:
+      required: true
+
+  - type: input
+    id: sightline-version
+    attributes:
+      label: Sightline version
+      placeholder: "0.1.0 — or the commit sha"
+    validations:
+      required: true
+
+  - type: input
+    id: claude-version
+    attributes:
+      label: Claude Code version
+      description: >
+        From the `version` field in any transcript record, or `claude --version`.
+        Transcript-parsing bugs are almost always version-specific.
+      placeholder: "2.1.198"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options: [Windows, WSL, macOS, Linux]
+    validations:
+      required: true
+
+  - type: textarea
+    id: transcript
+    attributes:
+      label: Offending transcript (optional)
+      description: >
+        If this is a parsing bug, the smallest excerpt that reproduces it helps enormously.
+        **Redact it first** — transcripts routinely contain API keys, tokens and private
+        source code.
