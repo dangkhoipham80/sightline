@@ -1,12 +1,53 @@
 /**
  * `@sightline/core` — the domain layer.
  *
- * Everything that understands Claude Code's on-disk format lives here, and nothing
- * here touches a database, a network, or a UI. Keeping it that way is what lets the
- * parser be exhaustively tested against real transcript fixtures.
+ * Everything that understands Claude Code's on-disk format lives here, and nothing here
+ * touches a database, a network, or a filesystem. Callers hand in lines; this package
+ * hands back structure. That purity is what lets the parser be tested exhaustively
+ * against real transcript fixtures, and it is a constraint worth defending.
  *
- * The transcript parser itself lands in `feat/transcript-parser`; see
- * `docs/TRANSCRIPT-FORMAT.md` for the reverse-engineered spec it implements.
+ * See `docs/TRANSCRIPT-FORMAT.md` for the reverse-engineered spec this implements.
  */
 
 export { PRODUCT_NAME, SIGHTLINE_SCHEMA_VERSION } from './constants.js'
+export { flattenText, hasThinking, normaliseContent, toolUseBlocks } from './parse/content.js'
+export type { Lineage, LineageMember } from './parse/lineage.js'
+export { linkLineages } from './parse/lineage.js'
+export type { ParseRecordsResult } from './parse/records.js'
+export { parseRecords } from './parse/records.js'
+export type { DeriveSessionOptions, SessionSummary } from './parse/session.js'
+export { deriveSessionSummary } from './parse/session.js'
+export type { ParsedSubagent, SubagentInput } from './parse/subagents.js'
+export { agentIdFromFilename, parseSubagent } from './parse/subagents.js'
+export type { ParsedSession, ParseSessionInput } from './parse/transcript.js'
+export { parseSession } from './parse/transcript.js'
+export type { MessageNode, MessageTree } from './parse/tree.js'
+export { buildMessageTree, flattenTree } from './parse/tree.js'
+export type { HostKind, HostPath, ResumeCommandOptions } from './paths.js'
+export {
+  encodeProjectFolderKey,
+  isSameOrDescendant,
+  normalisePathForComparison,
+  parseHostPath,
+  resumeCommand,
+} from './paths.js'
+export type {
+  AgentNameRecord,
+  Artifact,
+  AssistantRecord,
+  AttachmentRecord,
+  ContentBlock,
+  ConversationRecord,
+  Envelope,
+  FileOperation,
+  FileTouch,
+  JsonObject,
+  JsonValue,
+  MalformedLine,
+  RecordKind,
+  SystemRecord,
+  TokenUsage,
+  TranscriptRecord,
+  UserRecord,
+} from './types.js'
+export { hasGraphIdentity, isConversationRecord } from './types.js'

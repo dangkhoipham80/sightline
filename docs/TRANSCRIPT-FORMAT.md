@@ -9,6 +9,20 @@ This document exists because getting these details wrong is the single largest s
 bugs in every transcript viewer in this space. If you're about to write a parser, read
 [Traps](#traps) first.
 
+**Every claim below is tagged with its evidence**, because several traps widely repeated
+in public write-ups did not reproduce on our corpus, and the trap that actually cost us
+1,345 lost records is not documented anywhere else:
+
+| Tag | Meaning |
+| --- | --- |
+| ✅ **verified** | Observed directly in our corpus and covered by a test |
+| ⚠️ **unverified** | Reported publicly or upstream, but *not* observed at `2.1.198`. We defend against it anyway; it is cheap to handle and expensive to get wrong |
+
+Corpus used throughout: **52 sessions · 59 subagent transcripts · 36,815 records ·
+127.5 MB**, from 12 projects spanning WSL and Windows working directories, all written by
+Claude Code `2.1.198`. Reproduce with
+`pnpm --filter @sightline/core exec tsx scripts/check-corpus.ts`.
+
 ---
 
 ## On-disk layout
@@ -71,8 +85,23 @@ over a representative 412-line session:
 | `file-history-snapshot` | 15 | — | see [trap 3](#3-file-history-snapshot-messageid-collides-with-message-uuid) |
 | `queue-operation` | 10 | — | prompts typed while Claude was still working |
 
-Other types observed in the wild: `summary`, `custom-title`, `agent-name`,
-`pr-link`, `compact-boundary`. Assume the list is open-ended.
+Also observed in our corpus: `agent-name` (146 occurrences — a user-facing name for an
+agent session, distinct from `ai-title`) and `pr-link`. Reported elsewhere but not seen
+here: `summary`, `custom-title`, `compact-boundary`. Assume the list is open-ended.
+
+### Which records carry a `uuid`
+
+This distinction turns out to matter more than any other, so it is worth stating flatly.
+Measured over a 20-file sample:
+
+| Carries `uuid` | Does not |
+| --- | --- |
+| `user`, `assistant`, `system`, **`attachment`** | `mode`, `permission-mode`, `file-history-snapshot`, `ai-title`, `last-prompt`, `queue-operation`, `pr-link`, `agent-name` |
+
+`attachment` being in the left column is [trap 1](#1-the-conversation-graph-is-wider-than-the-conversation).
+`file-history-snapshot` being in the right column is what makes
+[trap 3](#3-file-history-snapshot-messageid-collides-with-message-uuid) narrower than it
+is usually described.
 
 ### Common envelope
 
@@ -159,57 +188,99 @@ diff of what a session changed on disk — including changes that were never com
 
 ## Traps
 
-### 1. The folder key is lossy
+### 1. The conversation graph is wider than the conversation
+
+✅ **verified — 1,345 records, 3.7% of the corpus**
+
+`attachment` records carry a `uuid` **and** a `parentUuid`. They are links in the chain,
+not annotations beside it. A parser that indexes only `user` / `assistant` / `system`
+records severs every branch that passes through an attachment, and each severed message
+then looks like a legitimate root rather than like an error.
+
+This is the trap that actually bit us, it is documented nowhere else, and it is invisible
+without a corpus check: the resulting tree renders fine. Our first implementation reported
+1,345 "dangling parentUuid" records and we nearly wrote them up as evidence for trap 3
+below. Every single one had an `attachment` as its parent.
+
+**Index every record that carries a `uuid`.** Filter for display, not for structure.
+
+### 2. The folder key is lossy
+
+✅ **verified**
 
 Covered above. Never derive a display path or a filesystem path from it. Use it only as
 an opaque grouping key, and resolve the real path from `cwd`.
 
-### 2. `parentUuid` can dangle
-
-`parentUuid` may reference a uuid that does not exist anywhere in the file
-([anthropics/claude-code#22526](https://github.com/anthropics/claude-code/issues/22526)).
-Build a `Map<uuid, record>`, then attach unresolvable children to the root rather than
-throwing or dropping them. The transcript is a DAG, not a list — branches happen when the
-user rewinds and re-asks.
-
 ### 3. `file-history-snapshot` `messageId` collides with message `uuid`
 
+✅ **collision verified** · ⚠️ **impact narrower than usually described**
+
 Snapshot records carry a `messageId` equal to the uuid of the message they snapshot
-([anthropics/claude-code#36583](https://github.com/anthropics/claude-code/issues/36583)).
-Naively indexing every record by "its id" overwrites real messages with snapshots.
-**Filter `file-history-snapshot` out before building the uuid index.**
+([anthropics/claude-code#36583](https://github.com/anthropics/claude-code/issues/36583)),
+and our smallest five-line fixture contains an instance of exactly that.
 
-### 4. Session continuation is invisible unless you look for it
+But snapshots carry **no `uuid` field of their own**, so a parser indexing on `uuid`
+alone is already immune. The collision only bites code that reaches for
+`messageId ?? uuid` — which is a very natural thing to write, and is presumably how the
+upstream report was found. Excluding snapshots explicitly costs one line and removes the
+hazard permanently.
 
-On `--resume` (and after compaction) Claude Code opens a **new** file. The new file's
-first record carries the *previous* session's id, while the filename carries the new one.
+### 4. `parentUuid` can dangle
+
+⚠️ **unverified at 2.1.198 — 0 occurrences once trap 1 was fixed**
+
+`parentUuid` is reported to sometimes reference a uuid absent from the file
+([anthropics/claude-code#22526](https://github.com/anthropics/claude-code/issues/22526)).
+We have not seen it. Handle it anyway: attach unresolvable children to the root rather
+than throwing or dropping them, because the cost is a branch and the benefit is nothing.
+
+The transcript is a DAG, not a list — genuine branches happen when the user rewinds and
+re-asks.
+
+### 5. Session continuation
+
+⚠️ **unverified at 2.1.198 — 0 occurrences across 52 sessions**
+
+The widely documented heuristic is:
 
 ```
 filename uuid  ≠  first record's sessionId   ⟹  this file continues that session
 ```
 
-Follow the chain to reconstruct a lineage. Without this, one continuous week of work
-shows up as six unrelated sessions and the whole UI is a lie. Also skip records marked
-`isCompactSummary` — they are synthetic, not something the user said.
+**Not a single record in our entire corpus carries a `sessionId` differing from its
+filename**, including in projects where `--resume` was used heavily. Either the behaviour
+changed, or it only appears after compaction, or the reports describe a different version.
 
-### 5. Records are not uniformly shaped
+We implement the check because it is nearly free and the failure mode it prevents is
+severe — one continuous week of work rendering as six unrelated sessions. But it is
+currently untested against reality, and the UI must not *depend* on it. Also skip records
+marked `isCompactSummary`: they are synthetic, not something the user said.
+
+### 6. Duplicate uuids happen
+
+✅ **verified — 11 occurrences, all `user` records, all in one file**
+
+The same `uuid` can appear twice, most plausibly from a tail being replayed after an
+interrupted write. First occurrence wins; count the rest and move on.
+
+### 7. Records are not uniformly shaped
 
 Bookkeeping records (`mode`, `permission-mode`, `ai-title`, `last-prompt`) have almost
 none of the common envelope — no `uuid`, no `timestamp`, sometimes only `type` and
 `sessionId`. Schemas must be per-type unions, not one optional-everything blob.
 
-### 6. Timestamps tie, and sometimes vanish
+### 8. Timestamps tie, and sometimes vanish
 
 Several records can share a millisecond, and bookkeeping records have none. File order is
 the authoritative sequence. Assign a monotonic `seq` on read and sort by it.
 
-### 7. Transcripts are deleted after 30 days
+### 9. Transcripts are deleted after 30 days
 
 `cleanupPeriodDays` in `~/.claude/settings.json` defaults to 30. Anything older is gone.
 This is why Sightline's index is a permanent archive rather than a cache, and why first
 ingest should be run sooner rather than later on a machine with history worth keeping.
 
-### 8. `thinking` blocks are signed and mostly empty
+### 10. `thinking` blocks are signed and mostly empty
 
 `content[]` entries of type `thinking` carry a long `signature` and frequently an empty
 `thinking` string. Don't render the signature, don't count it toward length, and don't
@@ -225,9 +296,10 @@ send it to a summariser — it is pure token waste.
 3. Discriminate on `type` against a Zod union of tolerant (`passthrough`) schemas.
    Unknown `type` → `{ kind: 'raw', raw }`, retained so the UI can show *something* and
    so we can discover new record types by querying for them.
-4. Filter `file-history-snapshot` out of the message index (keep them aside — they drive
-   the diff view).
-5. Build `Map<uuid, node>`, link children, attach orphans to root.
+4. Filter `file-history-snapshot` out of the index (keep them aside — they drive the diff
+   view).
+5. Build `Map<uuid, node>` over **every remaining record that has a `uuid`** — attachments
+   included, per trap 1 — link children, attach orphans to root.
 6. Glob `<session>/subagents/agent-*.jsonl`, parse each the same way, join on `toolUseId`.
 7. Derive session metadata: last `aiTitle`, first/last timestamp, model set, token totals,
    `file_touches` from `Edit`/`Write`/`Read` tool inputs, artifacts from `pr-link`.
@@ -242,6 +314,6 @@ read only the tail. If the file shrank or the prefix hash changed, reparse from 
 
 | Claude Code version | Observed | Notes |
 | --- | --- | --- |
-| `2.1.198` | Aug 2026 | Baseline for this document. Subagents in sibling files; `ai-title`, `queue-operation`, `pr-link` present. |
+| `2.1.198` | Aug 2026 | Baseline for this document. Subagents in sibling files; `ai-title`, `agent-name`, `queue-operation`, `pr-link` present. Attachments participate in the uuid graph. No session-continuation mismatches and no genuinely dangling `parentUuid` observed. |
 
 Add a row whenever a fixture for a new version is introduced, and describe the delta.
