@@ -1,0 +1,41 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# build output
+dist/
+build/
+.next/
+out/
+*.tsbuildinfo
+
+# turbo
+.turbo/
+
+# test / coverage
+coverage/
+test-results/
+playwright-report/
+.vitest/
+
+# local data — Sightline's own SQLite index lives outside the repo,
+# but never commit one that lands here by accident
+*.db
+*.db-shm
+*.db-wal
+.sightline-data/
+
+# env & secrets
+.env
+.env.*
+!.env.example
+
+# editors / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+
+# Claude Code local overrides (settings.json IS committed)
+.claude/settings.local.json
