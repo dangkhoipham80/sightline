@@ -14,16 +14,24 @@ verified against live data and that every other viewer in this space gets wrong.
    An unrecognised `type` goes into the `raw` bucket. Claude Code changes its format
    without notice; a parser that crashes on an unknown record is a parser that breaks
    for users on the next CLI release.
-2. **Never reconstruct a path from the project folder name.** The encoding is lossy
+2. **Index every record that carries a `uuid`, not just the conversation ones.**
+   `attachment` records have both `uuid` and `parentUuid` and sit *inside* the chain.
+   Narrowing the index to user/assistant/system silently severs every branch that passes
+   through one — 1,345 records on our corpus, each of which then looked like a legitimate
+   root. Filter for display, never for structure.
+3. **Never reconstruct a path from the project folder name.** The encoding is lossy
    (`_` and `.` both collapse to `-`). Read `cwd` from the first record.
-3. **Filter `file-history-snapshot` before building the uuid index.** Its `messageId`
+4. **Filter `file-history-snapshot` before building the index.** Its `messageId`
    can collide with a real message `uuid` (upstream bug anthropics/claude-code#36583).
-4. **Traverse `parentUuid` defensively.** It can reference a uuid that isn't in the file
+5. **Traverse `parentUuid` defensively.** It can reference a uuid that isn't in the file
    (upstream bug anthropics/claude-code#22526). Dangling parents attach to the root.
-5. **Load the sibling subagent files.** `<session>/subagents/agent-*.jsonl` plus the
+6. **Load the sibling subagent files.** `<session>/subagents/agent-*.jsonl` plus the
    matching `.meta.json`. Dropping them loses most of the actual work.
-6. **Preserve ordering.** Records are append-only; file order is the ground truth when
+7. **Preserve ordering.** Records are append-only; file order is the ground truth when
    timestamps tie or are missing.
+
+Invariant 2 is the one to be paranoid about, because nothing about it fails loudly. Run
+the corpus check and look at the orphan count: on a healthy parser it is zero.
 
 ## Adding a fixture
 

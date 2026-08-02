@@ -87,6 +87,10 @@ Read `docs/TRANSCRIPT-FORMAT.md` before touching anything that parses JSONL. It 
 reverse-engineered spec, and the traps in it are real, load-bearing, and were verified
 against live data:
 
+- **`attachment` records are part of the conversation graph.** They carry a `uuid` *and* a
+  `parentUuid`. Index every record that has a `uuid`, not just user/assistant/system —
+  indexing the narrower set severed 1,345 records on our own corpus and the resulting tree
+  looked perfectly plausible. Filter for display, never for structure.
 - The project folder name is a **lossy** encoding of the working directory
   (`_` and `.` both become `-`). Never reconstruct a path from it — read `cwd` from the
   first record instead.
@@ -97,6 +101,11 @@ against live data:
 - `parentUuid` may reference a uuid that does not exist. Traverse defensively; never throw.
 - A session file whose first record carries a different `sessionId` than its filename is a
   **continuation** of an earlier session. Link them, don't display them as unrelated.
+
+The last two are documented upstream but did **not** reproduce on our corpus at `2.1.198`.
+`docs/TRANSCRIPT-FORMAT.md` tags every claim as verified or unverified — respect that
+distinction when you add to it. Writing down a trap you inferred rather than observed is
+how the 1,345-record bug nearly got shipped as a feature.
 
 Parsing is tolerant by design: one malformed line must never take down a file, and an
 unrecognised record type is data we don't understand yet — not an error.
