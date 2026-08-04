@@ -1,0 +1,34 @@
+{
+  "name": "@sightline/web",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Sightline's local web UI.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "build": "next build",
+    "dev": "next dev --port 4317",
+    "start": "next start --port 4317",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@sightline/core": "workspace:*",
+    "@sightline/db": "workspace:*",
+    "@sightline/ingest": "workspace:*",
+    "better-sqlite3": "^12.2.0",
+    "next": "^15.5.0",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "server-only": "^0.0.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.0",
+    "@types/node": "^22.13.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "tailwindcss": "^4.1.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}

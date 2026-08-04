@@ -1,0 +1,137 @@
+@import "tailwindcss";
+
+/*
+ * Sightline reads a record that already exists — it is an instrument pointed at your own
+ * history, not a dashboard selling you something. The palette is cold anodised graphite
+ * with a single warm signal, the way an illuminated reticle sits on a metal body.
+ *
+ * There is exactly one data hue. Activity is a *magnitude*, not an identity, so it gets a
+ * single-hue ramp with monotonically rising lightness rather than a categorical palette.
+ * Nothing in this UI encodes meaning by hue alone.
+ */
+@theme {
+  --color-ink: #0e1417;
+  --color-panel: #151d22;
+  --color-raised: #1c262c;
+  --color-rule: #24313a;
+  --color-muted: #7e9099;
+  --color-dim: #56656c;
+  --color-text: #dce5e8;
+  --color-signal: #e8a33d;
+
+  /* Activity ramp, low → high. Never used for text. */
+  --color-act-1: #7a5721;
+  --color-act-2: #a87526;
+  --color-act-3: #c68c31;
+  --color-act-4: #e8a33d;
+
+  --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-plex-mono), ui-monospace, monospace;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    background-color: var(--color-ink);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background-color: color-mix(in oklab, var(--color-signal) 30%, transparent);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-signal);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /*
+   * The eyebrow that labels every band of the page. Tracking this wide only works at
+   * small sizes, which is the point: it reads as a machine label, not a heading.
+   */
+  .band-label {
+    font-family: var(--font-mono);
+    font-size: 0.6875rem;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: var(--color-dim);
+  }
+
+  /*
+   * One grid, used by the hero ribbon and by every project row, so all the activity
+   * strips share a left edge and therefore share a time axis. Without the fixed first
+   * column each strip would start wherever its project name happened to end, and the
+   * comparison the page exists to make would be a lie.
+   */
+  .axis-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.75rem;
+  }
+
+  @media (min-width: 1024px) {
+    .axis-grid {
+      grid-template-columns: 17rem minmax(0, 1fr) 10rem;
+      align-items: center;
+      gap: 0 1.5rem;
+    }
+  }
+}
+
+/*
+ * The load sequence is the only orchestrated motion on the page: activity marks rise in
+ * left to right, which is also the direction you read the time axis.
+ */
+@keyframes mark-in {
+  from {
+    transform: scaleY(0.15);
+    opacity: 0;
+  }
+  to {
+    transform: scaleY(1);
+    opacity: 1;
+  }
+}
+
+.mark-in {
+  transform-origin: bottom;
+  animation: mark-in 420ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+/* Cells are already full height, so they arrive by fading rather than by growing. */
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.fade-in {
+  animation: fade-in 320ms ease-out both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mark-in,
+  .fade-in {
+    animation: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    /* biome-ignore lint/complexity/noImportantStyles: honouring a stated accessibility
+       preference has to outrank the utility classes that set these transitions, and those
+       are generated with the same specificity as this rule. */
+    transition-duration: 0.01ms !important;
+  }
+}

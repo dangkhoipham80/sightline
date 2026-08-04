@@ -44,10 +44,21 @@ Read-only on `~/.claude`. Your transcripts are never modified.
 
 ## Status
 
-🚧 **Pre-alpha — under active construction.** Nothing is installable yet.
+🚧 **Pre-alpha — under active construction.** Nothing is installable yet, but the UI runs
+from source:
 
-See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what's landing in what order, and
-[`docs/PRD.md`](docs/PRD.md) for the full product rationale.
+```bash
+pnpm install
+pnpm dev          # then open http://localhost:4317
+```
+
+The first screen has a **Read transcripts** button. It indexes `~/.claude/projects` into
+`~/.sightline/index.db` and nothing else — Claude Code's own files are opened read-only.
+Point the app at a scratch index instead with `SIGHTLINE_INDEX=/tmp/scratch.db pnpm dev`.
+
+So far this gives you the dashboard and project pages. Opening an individual session is the
+next piece of work; see [`docs/ROADMAP.md`](docs/ROADMAP.md) for what lands in what order,
+and [`docs/PRD.md`](docs/PRD.md) for the full product rationale.
 
 ## Documentation
 

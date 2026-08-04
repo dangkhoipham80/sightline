@@ -10,8 +10,8 @@ allowed to cost a cent.
 | --- | --- | --- | --- |
 | 1 | `chore/scaffold` | Monorepo, tooling, CI, `CLAUDE.md`, `SKILLS.md`, `docs/` | ✅ |
 | 2 | `feat/transcript-parser` | `packages/core`: tolerant Zod schemas, streaming parser, subagent loading, lineage linking, WSL/Windows path normalisation, anonymised fixtures, golden tests | ✅ |
-| 3 | `feat/ingest-db` | `packages/db` + `packages/ingest`: schema, migrations, FTS5, scanner, signature-based incremental ingest, chokidar watcher, project grouping by git root | 🚧 |
-| 4 | `feat/web-shell` | `apps/web`: dashboard, project page, session list — deterministic data only | |
+| 3 | `feat/ingest-db` | `packages/db` + `packages/ingest`: schema, migrations, FTS5, scanner, signature-based incremental ingest, chokidar watcher, project grouping by git root | ✅ |
+| 4 | `feat/web-shell` | `apps/web`: dashboard, project page, session list — deterministic data only | 🚧 |
 | 5 | `feat/session-viewer` | Transcript renderer: progressive disclosure, diff rendering for `Edit`/`Write`, subagent sub-threads, minimap, virtualisation | |
 | 6 | `feat/search` | FTS5 queries + ⌘K palette, scoped and global | |
 | 7 | `feat/ai-summaries` | `packages/ai`: provider abstraction, redaction, Tier 1 digests, Tier 2 project briefs, caching | |
