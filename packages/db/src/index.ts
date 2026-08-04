@@ -15,8 +15,10 @@ export {
   resetDerivedTables,
   setMeta,
 } from './database.js'
-export type { ProjectRow, SearchHit, SessionRow } from './queries.js'
+export type { ProjectRow, SearchHit, SearchOptions, SessionRow } from './queries.js'
 export {
+  countSearchResults,
+  findSessionsByTitle,
   getSession,
   getSessionSignature,
   listContinuations,
@@ -27,5 +29,7 @@ export {
 } from './queries.js'
 export type { Migration } from './schema.js'
 export { MIGRATIONS } from './schema.js'
+export type { MatchQueryOptions } from './search-query.js'
+export { toMatchQuery } from './search-query.js'
 export type { ProjectInput, SessionInput } from './writer.js'
 export { upsertProject, writeSession } from './writer.js'
