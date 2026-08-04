@@ -58,7 +58,9 @@ export function parseHostPath(cwd: string): HostPath {
 
   if (WINDOWS_DRIVE.test(cwd)) {
     const nativePath = cwd.replace(/\//g, '\\').replace(/\\+$/, '')
-    const segments = splitSegments(nativePath.replace(/\\/g, '/'))
+    // The drive letter is a root marker, not a path component. Including it in
+    // `segments` makes anything that rebuilds a path from them produce `C:\C:\Users\…`.
+    const segments = splitSegments(nativePath.slice(2).replace(/\\/g, '/'))
     return {
       kind: 'windows',
       raw,
