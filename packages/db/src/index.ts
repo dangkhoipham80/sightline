@@ -17,7 +17,9 @@ export {
 } from './database.js'
 export type { ProjectRow, SearchHit, SessionRow } from './queries.js'
 export {
+  getSession,
   getSessionSignature,
+  listContinuations,
   listFileTouches,
   listProjects,
   listSessions,
