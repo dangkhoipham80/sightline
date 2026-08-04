@@ -35,9 +35,7 @@ One row per real repository, **not** per Claude Code folder key.
 | `id` | session uuid (from the **filename**) |
 | `project_id` | |
 | `parent_session_id` | set when this file continues an earlier session — see trap 4 in `TRANSCRIPT-FORMAT.md` |
-| `file_path`, `file_size`, `file_mtime` | |
-| `ingest_offset` | bytes consumed; enables tail-only re-reads |
-| `ingest_prefix_hash` | detects rewrites that invalidate the offset |
+| `file_path`, `file_size`, `file_mtime_ms` | the change-detection signature; unchanged means skip |
 | `ai_title` | last `ai-title` record — Claude's own name for the session |
 | `slug`, `git_branch` | |
 | `started_at`, `ended_at`, `duration_ms` | |
@@ -150,15 +148,24 @@ CREATE INDEX idx_summaries_lookup         ON summaries(scope, target_id, prompt_
 ## Ingest state machine
 
 ```
-discover file ─▶ size/mtime unchanged? ─yes─▶ skip
-       │no
+discover file ─▶ size/mtime match stored? ─yes─▶ skip
+       │no (or --force, or a subagent file changed)
        ▼
-prefix hash matches stored? ─no─▶ full reparse from offset 0
-       │yes
-       ▼
-read from ingest_offset ─▶ parse tail ─▶ upsert ─▶ store new offset
+parse whole transcript + sidechains ─▶ delete session rows ─▶ reinsert ─▶ store new signature
 ```
 
-Upserts are keyed on `uuid`, so a replayed tail is idempotent. The entire ingest for one
-session runs in a single transaction — a crash mid-write leaves the old offset intact and
-the next run redoes the tail.
+**Implemented, superseding an earlier byte-offset design.** Reading only the appended tail
+looks free — the files are append-only — but every session aggregate (token totals, file
+touches, counts, title) is a function of the *whole* transcript, so a tail read would have
+to merge partial aggregates and stay correct across compaction and rewrites. Reparsing the
+entire 127 MB corpus takes under four seconds, so the complexity bought nothing. Revisit
+if a corpus shows up where it matters.
+
+The whole per-session write is one transaction, and it deletes before it reinserts — a
+crash mid-write leaves the previous signature in place, so the next run simply redoes it.
+
+Two known consequences, stated rather than hidden:
+
+- A rewrite that preserves both size and mtime is invisible. `--force` is the escape hatch.
+- A **subagent** write changes what a session contains without touching the parent file, so
+  the watcher force-indexes on sidechain events instead of trusting the signature.

@@ -126,3 +126,26 @@ describe('resumeCommand', () => {
     )
   })
 })
+
+describe('segments', () => {
+  /**
+   * The drive letter is a root marker, not a component. Including it meant
+   * `findGitRoot` rebuilt paths as `C:\C:\Users\…` and silently found no repository —
+   * which in turn scattered one project across a row per subdirectory.
+   */
+  it('excludes the Windows drive letter', () => {
+    expect(parseHostPath('D:\\code\\app').segments).toEqual(['code', 'app'])
+  })
+
+  it('excludes the WSL UNC prefix and distro', () => {
+    expect(parseHostPath('\\\\wsl.localhost\\Ubuntu-24.04\\home\\dev\\app').segments).toEqual([
+      'home',
+      'dev',
+      'app',
+    ])
+  })
+
+  it('has no leading empty segment on POSIX paths', () => {
+    expect(parseHostPath('/home/dev/app').segments).toEqual(['home', 'dev', 'app'])
+  })
+})
