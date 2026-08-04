@@ -1,4 +1,5 @@
 import type { SessionRow as Session } from '@sightline/db'
+import Link from 'next/link'
 import { ResumeCommand } from '@/components/resume-command'
 import { count, duration, stamp } from '@/lib/format'
 
@@ -24,7 +25,9 @@ export function SessionRow({ session }: { session: Session }) {
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
         <span className="shrink-0 font-mono text-[11px] text-dim">{stamp(session.startedAt)}</span>
         <h3 className="min-w-0 flex-1 font-display text-[15px] font-medium text-text">
-          {title(session)}
+          <Link href={`/sessions/${session.id}`} className="hover:text-signal">
+            {title(session)}
+          </Link>
         </h3>
         {session.gitBranch !== null && (
           <span className="shrink-0 font-mono text-[11px] text-muted">
