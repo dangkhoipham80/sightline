@@ -1,0 +1,34 @@
+{
+  "name": "@sightline/db",
+  "version": "0.0.0",
+  "private": true,
+  "description": "SQLite index, migrations and queries for Sightline.",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@sightline/core": "workspace:*",
+    "better-sqlite3": "^12.2.0"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.13.0",
+    "typescript": "^5.9.0",
+    "vitest": "^3.2.0"
+  }
+}
