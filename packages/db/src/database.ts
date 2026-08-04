@@ -1,10 +1,22 @@
 import { mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
+import { homedir } from 'node:os'
+import { dirname, join } from 'node:path'
 import { SIGHTLINE_SCHEMA_VERSION } from '@sightline/core'
 import Database from 'better-sqlite3'
 import { MIGRATIONS } from './schema.js'
 
 export type SightlineDatabase = Database.Database
+
+/**
+ * Where the index lives: `~/.sightline/index.db`.
+ *
+ * Deliberately not under `~/.claude`. That directory is read-only to Sightline, and an
+ * index written inside it would be both a rule violation and a landmine for Claude Code's
+ * own 30-day cleanup.
+ */
+export function defaultIndexPath(): string {
+  return join(homedir(), '.sightline', 'index.db')
+}
 
 export interface OpenOptions {
   /** Path to the SQLite file, or `:memory:` for tests. */
