@@ -51,3 +51,19 @@ export type {
   UserRecord,
 } from './types.js'
 export { hasGraphIdentity, isConversationRecord } from './types.js'
+export type { DiffHunk, DiffLine, DiffLineKind, DiffStat, FileDiff } from './view/diff.js'
+export { diffLines } from './view/diff.js'
+export type {
+  ClippedText,
+  DiffView,
+  StepView,
+  SubagentView,
+  ToolResultView,
+  TranscriptView,
+  TurnView,
+} from './view/model.js'
+export { buildTranscriptView, DIFF_LINE_LIMIT, RESULT_LIMIT, TEXT_LIMIT } from './view/model.js'
+export type { EditPreview, ToolKind, ToolSummary } from './view/tools.js'
+export { editPreviews, summariseTool, truncateMiddle } from './view/tools.js'
+export type { Turn } from './view/turns.js'
+export { groupTurns, indexToolResults, isUserPrompt, toolResultText } from './view/turns.js'

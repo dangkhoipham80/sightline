@@ -25,6 +25,14 @@
   --color-act-3: #c68c31;
   --color-act-4: #e8a33d;
 
+  /*
+   * The instrument bar's height, shared rather than duplicated.
+   *
+   * Anything else that sticks has to stick *below* it, and a hard-coded offset in the
+   * other file goes stale the moment this bar changes. One value, two consumers.
+   */
+  --spacing-bar: 3.25rem;
+
   --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, monospace;
@@ -63,6 +71,20 @@
     letter-spacing: 0.18em;
     text-transform: uppercase;
     color: var(--color-dim);
+  }
+
+  /*
+   * Virtualisation, delegated to the browser.
+   *
+   * A long session is thousands of DOM nodes, most of them off-screen. `content-visibility`
+   * lets the engine skip layout and paint for a turn nobody is looking at, which is the
+   * expensive part — and unlike a windowing library it does not break Ctrl+F, anchor links
+   * or printing, and it costs no dependency and no height measurement. `contain-intrinsic-size`
+   * is set per turn from its step count so the scrollbar stays roughly honest; `auto`
+   * remembers the real size once a turn has been rendered.
+   */
+  .turn-window {
+    content-visibility: auto;
   }
 
   /*

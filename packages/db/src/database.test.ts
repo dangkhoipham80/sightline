@@ -2,7 +2,14 @@ import { parseSession } from '@sightline/core'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { SightlineDatabase } from './database.js'
 import { getMeta, openDatabase, resetDerivedTables } from './database.js'
-import { getSessionSignature, listProjects, listSessions, search } from './queries.js'
+import {
+  getSession,
+  getSessionSignature,
+  listContinuations,
+  listProjects,
+  listSessions,
+  search,
+} from './queries.js'
 import type { ProjectInput } from './writer.js'
 import { upsertProject, writeSession } from './writer.js'
 
@@ -207,6 +214,53 @@ describe('writeSession', () => {
     seedSession(db, projectId, 's1', [], { fileSize: 4242, fileMtimeMs: 999 })
     expect(getSessionSignature(db, 's1')).toEqual({ fileSize: 4242, fileMtimeMs: 999 })
     expect(getSessionSignature(db, 'never-seen')).toBeUndefined()
+  })
+})
+
+describe('getSession', () => {
+  it('returns the row with the transcript path a viewer needs to re-read it', () => {
+    const projectId = seedProject(db)
+    seedSession(db, projectId, 's1', [
+      line({ type: 'user', uuid: 'u1', message: { content: 'hello' } }),
+    ])
+
+    expect(getSession(db, 's1')?.filePath).toBe('/tmp/s1.jsonl')
+  })
+
+  it('returns undefined for an id it has never seen, rather than throwing', () => {
+    expect(getSession(db, 'nope')).toBeUndefined()
+  })
+})
+
+describe('listContinuations', () => {
+  /**
+   * A resumed session is a *new* file whose first record still carries the old id. The
+   * viewer needs the link in both directions, or one stretch of work reads as several
+   * unrelated sessions that each stop mid-thought.
+   */
+  it('finds the sessions that continue a given one, oldest first', () => {
+    const projectId = seedProject(db)
+    seedSession(db, projectId, 'original', [
+      line({ type: 'user', uuid: 'u1', message: { content: 'start' } }),
+    ])
+
+    for (const [id, ts] of [
+      ['later', '2026-08-02T00:00:00Z'],
+      ['sooner', '2026-08-01T00:00:00Z'],
+    ] as const) {
+      seedSession(db, projectId, id, [
+        line({
+          type: 'user',
+          uuid: `u-${id}`,
+          sessionId: 'original',
+          timestamp: ts,
+          message: { content: 'resumed' },
+        }),
+      ])
+    }
+
+    expect(listContinuations(db, 'original').map((s) => s.id)).toEqual(['sooner', 'later'])
+    expect(listContinuations(db, 'later')).toEqual([])
   })
 })
 

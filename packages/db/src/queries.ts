@@ -21,6 +21,12 @@ export interface SessionRow {
   id: string
   projectId: string
   parentSessionId: string | null
+  /**
+   * Where the transcript lives. The index stores summaries, not message bodies — a viewer
+   * re-reads the file. Keeping the path on the row is what makes that possible without a
+   * second lookup, and it is the only pointer back to the source of truth.
+   */
+  filePath: string
   title: string | null
   slug: string | null
   gitBranch: string | null
@@ -84,6 +90,31 @@ export function listSessions(
       since: options.since ?? null,
       limit: options.limit ?? 200,
     })
+
+  return rows.map(toSessionRow)
+}
+
+/** One session by id. Undefined rather than throwing — a stale link is not an error. */
+export function getSession(db: SightlineDatabase, sessionId: string): SessionRow | undefined {
+  const row = db.prepare('SELECT * FROM sessions WHERE id = ?').get(sessionId)
+  return row === undefined ? undefined : toSessionRow(row)
+}
+
+/**
+ * The sessions that continue this one, oldest first.
+ *
+ * A `--resume` or a post-compaction restart writes a **new** file that carries the old
+ * session's id in its first record. Without following the link in both directions, one
+ * continuous stretch of work reads as several unrelated sessions that each stop mid-thought.
+ */
+export function listContinuations(db: SightlineDatabase, sessionId: string): SessionRow[] {
+  const rows = db
+    .prepare(
+      `SELECT * FROM sessions
+        WHERE parent_session_id = ?
+        ORDER BY started_at ASC NULLS LAST`,
+    )
+    .all(sessionId)
 
   return rows.map(toSessionRow)
 }
@@ -215,6 +246,7 @@ function toSessionRow(row: unknown): SessionRow {
     id: String(r['id']),
     projectId: String(r['project_id']),
     parentSessionId: (r['parent_session_id'] as string | null) ?? null,
+    filePath: String(r['file_path']),
     // `ai-title` is Claude's own name for the session and is usually good. Falling back
     // to the slug beats inventing something, and beats showing a bare uuid.
     title: (r['ai_title'] as string | null) ?? (r['slug'] as string | null) ?? null,
