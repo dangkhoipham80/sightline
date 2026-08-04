@@ -74,11 +74,13 @@ from it. When the directory no longer exists — a deleted or renamed repo — t
 `cwd` is retained and the project is marked orphaned rather than dropped, because its
 history is often exactly what you want to look up.
 
-### Incremental ingest by byte offset
+### Incremental ingest by file signature
 
-Transcript files are append-only, so the indexer stores the byte offset it has consumed
-and reads only the tail. A shrunk file or a changed prefix hash forces a full reparse.
-This is what makes "watch and update live" cost nothing.
+The indexer stores each transcript's size and mtime and skips anything unchanged. What
+changed is reparsed **in full**, not from a byte offset: every session aggregate is a
+function of the whole transcript, and the entire corpus reparses in seconds, so tail-only
+reads would buy complexity rather than speed. See `docs/DATA-MODEL.md` for the state
+machine and its two known blind spots.
 
 ### Claude CLI headless as the default AI provider
 
@@ -100,9 +102,11 @@ real credentials; "remember to redact" is not a design.
 
 ## Data flow: a session ends
 
-1. `chokidar` sees `<session>.jsonl` grow.
-2. Ingest reads from the stored byte offset, parses new records, upserts `messages`,
-   `tool_calls`, `file_touches`, `artifacts`, and updates session aggregates.
+1. `chokidar` sees `<session>.jsonl` grow — or one of its `subagents/agent-*.jsonl`
+   sidechains, which changes the session without touching the parent file at all.
+2. The write is debounced (quiet period, with a ceiling so a long agent run still updates),
+   then ingest reparses the transcript and replaces `messages`, `tool_calls`,
+   `file_touches`, `artifacts` and the session aggregates in one transaction.
 3. FTS5 triggers keep the search index in sync.
 4. SSE pushes the delta; the open UI updates without a refresh.
 5. *If* summarisation is enabled (or the user clicks Summarize), `ai` computes a
