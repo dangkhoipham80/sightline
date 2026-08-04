@@ -53,6 +53,8 @@ export type {
 export { hasGraphIdentity, isConversationRecord } from './types.js'
 export type { DiffHunk, DiffLine, DiffLineKind, DiffStat, FileDiff } from './view/diff.js'
 export { diffLines } from './view/diff.js'
+export type { MessageLocation } from './view/locate.js'
+export { locateMessage } from './view/locate.js'
 export type {
   ClippedText,
   DiffView,
