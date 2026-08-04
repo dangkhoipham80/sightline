@@ -7,7 +7,14 @@
  */
 
 export type { OpenOptions, SightlineDatabase } from './database.js'
-export { getMeta, migrate, openDatabase, resetDerivedTables, setMeta } from './database.js'
+export {
+  defaultIndexPath,
+  getMeta,
+  migrate,
+  openDatabase,
+  resetDerivedTables,
+  setMeta,
+} from './database.js'
 export type { ProjectRow, SearchHit, SessionRow } from './queries.js'
 export {
   getSessionSignature,

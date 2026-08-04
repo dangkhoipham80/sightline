@@ -8,6 +8,11 @@
   "files": {
     "includes": ["**", "!**/dist", "!**/.next", "!**/fixtures"]
   },
+  "css": {
+    "parser": {
+      "tailwindDirectives": true
+    }
+  },
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
