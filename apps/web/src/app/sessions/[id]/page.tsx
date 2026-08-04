@@ -9,14 +9,21 @@ import { loadSessionPage } from '@/lib/session'
 
 export const dynamic = 'force-dynamic'
 
-export default async function SessionPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function SessionPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>
+  searchParams: Promise<{ m?: string }>
+}) {
   const { id } = await params
+  const { m } = await searchParams
   if (!indexExists()) notFound()
 
-  const data = loadSessionPage(id)
+  const data = loadSessionPage(id, m)
   if (data === undefined) notFound()
 
-  const { session, project, view, parent, continuations } = data
+  const { session, project, view, parent, continuations, focus } = data
 
   return (
     <>
@@ -113,7 +120,15 @@ export default async function SessionPage({ params }: { params: Promise<{ id: st
             </p>
           </section>
         ) : (
-          <Transcript view={view} />
+          <>
+            {m !== undefined && focus === undefined && (
+              <p className="border-b border-rule py-3 font-mono text-[11px] text-dim">
+                The message this link points at is not in this transcript any more. Showing the
+                session from the top.
+              </p>
+            )}
+            <Transcript view={view} {...(focus !== undefined && { focusTurn: focus.turnIndex })} />
+          </>
         )}
       </main>
     </>

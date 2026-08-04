@@ -27,10 +27,13 @@ export function TurnBlock({
   turn,
   density,
   isLast,
+  focused = false,
 }: {
   turn: TurnView
   density: Density
   isLast: boolean
+  /** Arrived here from a search hit. Marked so the eye lands where the click promised. */
+  focused?: boolean
 }) {
   // Per-turn override of the global density, reset whenever that global moves — the
   // control has to win, or "collapse all" leaves whatever you opened by hand still open.
@@ -49,7 +52,9 @@ export function TurnBlock({
       id={`turn-${turn.index}`}
       // Anchored scrolling has to clear both sticky bars, or a minimap jump lands the
       // turn's header underneath them.
-      className={`turn-window scroll-mt-28 px-4 py-5 lg:px-6 ${isLast ? '' : 'border-b border-rule'}`}
+      className={`turn-window scroll-mt-28 px-4 py-5 lg:px-6 ${isLast ? '' : 'border-b border-rule'} ${
+        focused ? 'border-s-2 border-s-signal bg-panel/40 ps-3 lg:ps-5' : ''
+      }`}
       style={{ containIntrinsicSize: `auto ${estimateHeight(turn)}px` }}
       aria-label={`Turn ${turn.index + 1}`}
     >
