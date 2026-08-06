@@ -253,7 +253,7 @@ function accumulateTouch(
   touch: { path: string; op: FileOperation },
   seq: number,
 ): void {
-  const key = `${touch.op} ${touch.path}`
+  const key = `${touch.op}\u0000${touch.path}`
   const existing = map.get(key)
   if (existing === undefined) {
     map.set(key, { path: touch.path, op: touch.op, count: 1, lastSeq: seq })
