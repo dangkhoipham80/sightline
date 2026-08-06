@@ -158,6 +158,54 @@ describe('scan', () => {
   })
 
   /**
+   * The config above is the shape nobody actually has: one section, nothing after it. Any
+   * repo with a branch checked out has stanzas following the remote, and the URL pattern
+   * used to run straight past the newline and capture all of them — so `repoUrl` came out
+   * as the entire tail of the file and the project page rendered it in full.
+   */
+  it('stops the repo URL at the end of its line, not the end of the file', () => {
+    const repo = makeRepo('app')
+    writeFileSync(
+      join(repo, '.git', 'config'),
+      [
+        '[core]',
+        '\trepositoryformatversion = 0',
+        '[remote "origin"]',
+        '\turl = https://github.com/acme/app.git',
+        '\tfetch = +refs/heads/*:refs/remotes/origin/*',
+        '[branch "main"]',
+        '\tremote = origin',
+        '\tmerge = refs/heads/main',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+    writeTranscript(repo, 'session-1', conversation(repo, 'one'))
+
+    scan(db, { root })
+    expect(listProjects(db)[0]?.repoUrl).toBe('https://github.com/acme/app.git')
+  })
+
+  /** `pushurl` contains `url` — anchoring to the line start is what keeps them apart. */
+  it('does not mistake pushurl for the remote URL', () => {
+    const repo = makeRepo('app')
+    writeFileSync(
+      join(repo, '.git', 'config'),
+      [
+        '[remote "origin"]',
+        '\tpushurl = git@github.com:acme/push-mirror.git',
+        '\turl = https://github.com/acme/app.git',
+        '',
+      ].join('\n'),
+      'utf8',
+    )
+    writeTranscript(repo, 'session-1', conversation(repo, 'one'))
+
+    scan(db, { root })
+    expect(listProjects(db)[0]?.repoUrl).toBe('https://github.com/acme/app.git')
+  })
+
+  /**
    * A known limitation, stated rather than hidden: when the working directory is gone
    * (deleted repo) or unreachable (a stopped WSL distro), there is no git root to group
    * on, so each directory becomes its own project. They are flagged `orphaned` so the UI

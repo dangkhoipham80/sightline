@@ -8,7 +8,7 @@
 export type { DiscoveredSession, LoadedTranscript } from './discover.js'
 export { defaultProjectsRoot, discoverSessions, loadTranscript } from './discover.js'
 export type { ProjectIdentity } from './grouping.js'
-export { findGitRoot, resolveProject } from './grouping.js'
+export { findGitRoot, hostAccessPath, resolveProject } from './grouping.js'
 export type { Indexer, IngestOutcome } from './indexer.js'
 export { createIndexer } from './indexer.js'
 export type { ScanOptions, ScanProgress, ScanResult } from './scan.js'
