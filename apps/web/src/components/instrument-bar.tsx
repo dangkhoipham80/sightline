@@ -1,5 +1,6 @@
 import Link from 'next/link'
 import { ScanButton } from '@/components/scan-button'
+import { CommandPalette } from '@/components/search/command-palette'
 
 export function InstrumentBar({ indexPath }: { indexPath: string }) {
   return (
@@ -17,9 +18,12 @@ export function InstrumentBar({ indexPath }: { indexPath: string }) {
         </Link>
 
         <div className="ms-auto flex items-center gap-4">
-          <span className="hidden font-mono text-[11px] text-dim md:inline" title={indexPath}>
+          <span className="hidden font-mono text-[11px] text-dim lg:inline" title={indexPath}>
             {indexPath}
           </span>
+          {/* Lives in the bar so it is on every page; the component renders either its
+              own trigger or the full overlay, depending on whether it is open. */}
+          <CommandPalette />
           <ScanButton />
         </div>
       </div>

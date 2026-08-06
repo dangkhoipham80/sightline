@@ -1,7 +1,7 @@
 'use client'
 
 import type { TranscriptView } from '@sightline/core'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Minimap } from '@/components/transcript/minimap'
 import type { Density } from '@/components/transcript/step'
 import { Step } from '@/components/transcript/step'
@@ -14,8 +14,22 @@ const LEVELS: Array<{ value: Density; label: string; hint: string }> = [
   { value: 'all', label: 'everything', hint: 'Thinking, tool inputs, results and diffs' },
 ]
 
-export function Transcript({ view }: { view: TranscriptView }) {
-  const [density, setDensity] = useState<Density>('prose')
+export function Transcript({ view, focusTurn }: { view: TranscriptView; focusTurn?: number }) {
+  // A hit inside a subagent resolves to the turn that spawned it, and that turn's tool
+  // calls are collapsed at the default density — so arriving from search opens everything.
+  // Landing on a turn whose match is hidden inside a closed <details> is the same as not
+  // having navigated at all.
+  const [density, setDensity] = useState<Density>(focusTurn === undefined ? 'prose' : 'all')
+
+  useEffect(() => {
+    if (focusTurn === undefined) return
+    // After paint: the target turn may still be a `content-visibility` placeholder, and
+    // scrolling to it before it has been laid out lands in the wrong place.
+    const timer = setTimeout(() => {
+      document.getElementById(`turn-${focusTurn}`)?.scrollIntoView({ block: 'start' })
+    }, 120)
+    return () => clearTimeout(timer)
+  }, [focusTurn])
 
   return (
     <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_7rem] lg:gap-8">
@@ -66,6 +80,7 @@ export function Transcript({ view }: { view: TranscriptView }) {
               key={turn.index}
               turn={turn}
               density={density}
+              focused={turn.index === focusTurn}
               isLast={index === view.turns.length - 1 && view.unattachedSubagents.length === 0}
             />
           ))

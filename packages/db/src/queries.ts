@@ -1,4 +1,5 @@
 import type { SightlineDatabase } from './database.js'
+import { toMatchQuery } from './search-query.js'
 
 export interface ProjectRow {
   id: string
@@ -48,11 +49,26 @@ export interface SearchHit {
   messageUuid: string
   kind: string
   ts: string | null
+  /** Position in the session, so a hit can be ordered and anchored inside the transcript. */
+  seq: number
   projectId: string
   projectName: string
+  sessionTitle: string | null
+  /** The hit is inside a subagent's transcript, not the main thread. Worth saying so. */
+  isSidechain: boolean
   /** FTS5 snippet with matches wrapped in the markers passed to `search`. */
   snippet: string
   rank: number
+}
+
+export interface SearchOptions {
+  projectId?: string
+  sessionId?: string
+  limit?: number
+  offset?: number
+  markers?: [string, string]
+  /** Complete the final term, for search-as-you-type. See `toMatchQuery`. */
+  prefixLastTerm?: boolean
 }
 
 export function listProjects(
@@ -122,17 +138,23 @@ export function listContinuations(db: SightlineDatabase, sessionId: string): Ses
 /**
  * Full-text search across message text.
  *
- * `bm25()` returns a *lower is better* score, so it is negated into a conventional rank.
- * The query is passed to FTS5 verbatim, which means users get `AND`/`OR`/`NEAR` and
- * quoted phrases for free — but also means a stray unbalanced quote is a syntax error
- * rather than a literal. Callers should sanitise input from a search box.
+ * `query` is whatever the user typed. It goes through `toMatchQuery` rather than reaching
+ * FTS5 directly — passing a search box straight to `MATCH` turns `c++` into a syntax error
+ * and `a-b` into "no such column: b". An empty result from an unsearchable query is not an
+ * error, so this returns `[]` rather than raising.
+ *
+ * `bm25()` returns a *lower is better* score, negated here into a conventional rank.
  */
 export function search(
   db: SightlineDatabase,
   query: string,
-  options: { projectId?: string; limit?: number; markers?: [string, string] } = {},
+  options: SearchOptions = {},
 ): SearchHit[] {
   const [open, close] = options.markers ?? ['«', '»']
+  const match = toMatchQuery(query, {
+    ...(options.prefixLastTerm !== undefined && { prefixLastTerm: options.prefixLastTerm }),
+  })
+  if (match === undefined) return []
 
   const rows = db
     .prepare(
@@ -140,8 +162,11 @@ export function search(
               m.session_id    AS session_id,
               m.kind          AS kind,
               m.ts            AS ts,
+              m.seq           AS seq,
+              m.is_sidechain  AS is_sidechain,
               s.project_id    AS project_id,
               p.display_name  AS project_name,
+              COALESCE(s.ai_title, s.slug) AS session_title,
               snippet(messages_fts, 0, @open, @close, '…', 24) AS snippet,
               -bm25(messages_fts) AS rank
          FROM messages_fts
@@ -150,15 +175,18 @@ export function search(
          JOIN projects p ON p.id = s.project_id
         WHERE messages_fts MATCH @query
           AND (@projectId IS NULL OR s.project_id = @projectId)
+          AND (@sessionId IS NULL OR m.session_id = @sessionId)
         ORDER BY rank DESC
-        LIMIT @limit`,
+        LIMIT @limit OFFSET @offset`,
     )
     .all({
-      query,
+      query: match,
       open,
       close,
       projectId: options.projectId ?? null,
+      sessionId: options.sessionId ?? null,
       limit: options.limit ?? 50,
+      offset: options.offset ?? 0,
     })
 
   return rows.map((row) => {
@@ -168,12 +196,83 @@ export function search(
       messageUuid: String(r['message_uuid']),
       kind: String(r['kind']),
       ts: (r['ts'] as string | null) ?? null,
+      seq: Number(r['seq'] ?? 0),
       projectId: String(r['project_id']),
       projectName: String(r['project_name']),
+      sessionTitle: (r['session_title'] as string | null) ?? null,
+      isSidechain: r['is_sidechain'] === 1,
       snippet: String(r['snippet']),
       rank: Number(r['rank']),
     }
   })
+}
+
+/**
+ * How many messages a query matches, for "showing 50 of 812".
+ *
+ * A separate count query rather than a window function over the page: bm25 ranking makes
+ * the paged query non-trivial, and a bare `COUNT(*)` over the FTS index is the cheap half.
+ */
+export function countSearchResults(
+  db: SightlineDatabase,
+  query: string,
+  options: Pick<SearchOptions, 'projectId' | 'sessionId' | 'prefixLastTerm'> = {},
+): number {
+  const match = toMatchQuery(query, {
+    ...(options.prefixLastTerm !== undefined && { prefixLastTerm: options.prefixLastTerm }),
+  })
+  if (match === undefined) return 0
+
+  const row = db
+    .prepare(
+      `SELECT COUNT(*) AS n
+         FROM messages_fts
+         JOIN messages m ON m.rowid = messages_fts.rowid
+         JOIN sessions s ON s.id = m.session_id
+        WHERE messages_fts MATCH @query
+          AND (@projectId IS NULL OR s.project_id = @projectId)
+          AND (@sessionId IS NULL OR m.session_id = @sessionId)`,
+    )
+    .get({
+      query: match,
+      projectId: options.projectId ?? null,
+      sessionId: options.sessionId ?? null,
+    }) as { n: number }
+
+  return row.n
+}
+
+/**
+ * Sessions whose *title* matches, for navigating rather than searching.
+ *
+ * Half of what a command palette is for is "take me to that thing I know the name of",
+ * and full-text over message bodies answers that badly — the session you want is buried
+ * under every message that happens to mention the word. This is a plain prefix/substring
+ * match over titles, kept separate so the palette can show it first.
+ */
+export function findSessionsByTitle(
+  db: SightlineDatabase,
+  query: string,
+  options: { projectId?: string; limit?: number } = {},
+): SessionRow[] {
+  const trimmed = query.trim()
+  if (trimmed.length === 0) return []
+
+  // LIKE, not FTS: titles are short, the corpus of them is small, and a user typing part
+  // of a title wants a substring match rather than a stemmed token match.
+  const pattern = `%${trimmed.replace(/[\\%_]/g, (c) => `\\${c}`)}%`
+
+  const rows = db
+    .prepare(
+      `SELECT * FROM sessions
+        WHERE (@projectId IS NULL OR project_id = @projectId)
+          AND (ai_title LIKE @pattern ESCAPE '\\' OR slug LIKE @pattern ESCAPE '\\')
+        ORDER BY started_at DESC NULLS LAST
+        LIMIT @limit`,
+    )
+    .all({ pattern, projectId: options.projectId ?? null, limit: options.limit ?? 10 })
+
+  return rows.map(toSessionRow)
 }
 
 /** Files a project has touched, most-recently-active first. Powers the change heatmap. */

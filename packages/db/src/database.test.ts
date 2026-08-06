@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import type { SightlineDatabase } from './database.js'
 import { getMeta, openDatabase, resetDerivedTables } from './database.js'
 import {
+  countSearchResults,
+  findSessionsByTitle,
   getSession,
   getSessionSignature,
   listContinuations,
@@ -320,6 +322,101 @@ describe('search', () => {
 
     expect(search(db, 'redirect')).toHaveLength(2)
     expect(search(db, 'redirect', { projectId: 'proj-2' })).toHaveLength(1)
+  })
+})
+
+describe('search, on input a person actually types', () => {
+  beforeEach(() => {
+    const projectId = seedProject(db)
+    seedSession(db, projectId, 's1', [
+      line({ type: 'user', uuid: 'u1', message: { content: 'the c++ interop notes' } }),
+      line({ type: 'user', uuid: 'u2', message: { content: 'fix the auth redirect loop' } }),
+    ])
+  })
+
+  /**
+   * These raise when handed to FTS5 verbatim. A search box is precisely where they get
+   * typed, and `a-b` fails with "no such column: b" — which reads like a bug in Sightline.
+   */
+  it.each(['c++', 'a-b', 'fix"', '"unbalanced', 'auth OR', 'NOT auth', '*', '--', '('])(
+    'does not raise on %j',
+    (query) => {
+      expect(() => search(db, query)).not.toThrow()
+      expect(() => countSearchResults(db, query)).not.toThrow()
+    },
+  )
+
+  it('finds a term FTS5 would choke on', () => {
+    expect(search(db, 'c++').map((h) => h.messageUuid)).toEqual(['u1'])
+  })
+
+  it('returns nothing for a query with nothing searchable in it', () => {
+    expect(search(db, '   ')).toEqual([])
+    expect(search(db, '---')).toEqual([])
+    expect(countSearchResults(db, '---')).toBe(0)
+  })
+
+  it('carries the context a result needs to be worth clicking', () => {
+    const [hit] = search(db, 'redirect')
+    expect(hit).toMatchObject({
+      messageUuid: 'u2',
+      projectName: 'repo',
+      isSidechain: false,
+    })
+    expect(hit?.seq).toBeGreaterThanOrEqual(0)
+  })
+
+  it('counts every match, not just the page returned', () => {
+    expect(search(db, 'the', { limit: 1 })).toHaveLength(1)
+    expect(countSearchResults(db, 'the')).toBe(2)
+  })
+
+  it('pages without repeating a result', () => {
+    const first = search(db, 'the', { limit: 1, offset: 0 })
+    const second = search(db, 'the', { limit: 1, offset: 1 })
+    expect(first[0]?.messageUuid).not.toBe(second[0]?.messageUuid)
+  })
+
+  it('completes the last word when asked, for search-as-you-type', () => {
+    expect(search(db, 'redirec')).toEqual([])
+    expect(search(db, 'redirec', { prefixLastTerm: true })).toHaveLength(1)
+  })
+
+  it('scopes to one session', () => {
+    seedSession(db, 'proj-1', 's2', [
+      line({ type: 'user', uuid: 'x1', message: { content: 'another redirect entirely' } }),
+    ])
+    expect(search(db, 'redirect')).toHaveLength(2)
+    expect(search(db, 'redirect', { sessionId: 's2' })).toHaveLength(1)
+  })
+})
+
+describe('findSessionsByTitle', () => {
+  beforeEach(() => {
+    const projectId = seedProject(db)
+    seedSession(db, projectId, 's1', [
+      line({ type: 'ai-title', aiTitle: 'Fix the auth redirect loop' }),
+      line({ type: 'user', uuid: 'u1', message: { content: 'unrelated body text' } }),
+    ])
+  })
+
+  it('finds a session by part of its title', () => {
+    expect(findSessionsByTitle(db, 'redirect').map((s) => s.id)).toEqual(['s1'])
+    expect(findSessionsByTitle(db, 'auth red').map((s) => s.id)).toEqual(['s1'])
+  })
+
+  it('is case-insensitive, because nobody types the title back exactly', () => {
+    expect(findSessionsByTitle(db, 'FIX THE AUTH')).toHaveLength(1)
+  })
+
+  /** A bare `%` would otherwise match every session and look like a broken search. */
+  it('treats LIKE wildcards as literal characters', () => {
+    expect(findSessionsByTitle(db, '%')).toHaveLength(0)
+    expect(findSessionsByTitle(db, '_')).toHaveLength(0)
+  })
+
+  it('returns nothing for an empty query rather than everything', () => {
+    expect(findSessionsByTitle(db, '   ')).toEqual([])
   })
 })
 
