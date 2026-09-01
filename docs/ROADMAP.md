@@ -26,9 +26,9 @@ independent and either can go first.
 
 | # | Branch | Contents | Status |
 | --- | --- | --- | --- |
-| 11 | `docs/cockpit-direction` | This document, the PRD scope change, `docs/LIVE-SESSIONS.md`, ADRs 0003–0005 | 🚧 |
-| 12 | `fix/host-aware-commands` | `LaunchStore` in `core`; fix `resumeCommand` for the Windows-store/UNC-cwd case and its cmd-only `cd /d`; add `buildSpawnPlan` + `matchHostPath`; wire the two web components to `core` | |
-| 13 | `chore/ci` | Activate `.github/workflows-pending/ci.yml`, add a `windows-latest` leg | |
+| 11 | `docs/cockpit-direction` | This document, the PRD scope change, `docs/LIVE-SESSIONS.md`, ADRs 0003–0005 | ✅ |
+| 12 | `fix/host-aware-commands` | `LaunchStore` in `core`; fix `resumeCommand` for the Windows-store/UNC-cwd case and its cmd-only `cd /d`; add `buildSpawnPlan` + `matchHostPath`; wire the two web components to `core` | ✅ |
+| 13 | `chore/ci` | Activate `.github/workflows-pending/ci.yml`, add a `windows-latest` leg | 🚧 |
 | 14 | `feat/multi-store-ingest` | Discover and index every `~/.claude` on the machine; `projects.store_kind`, `sessions.store_root` | |
 | 15 | `feat/project-sidebar` | Persistent sidebar grouped by store, `InstrumentBar` hoisted into the layout, CONSOLE/REVIEW tabs per project | |
 | 16 | `feat/usage-meter` | `token_events` migration, 5-hour blocks, `sightline statusline` capture, pricing loader, sidebar footer | |
