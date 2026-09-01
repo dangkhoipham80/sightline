@@ -23,6 +23,10 @@ Corpus used throughout: **52 sessions · 59 subagent transcripts · 36,815 recor
 Claude Code `2.1.198`. Reproduce with
 `pnpm --filter @sightline/core exec tsx scripts/check-corpus.ts`.
 
+Counts in [trap 11](#11-the-type-list-grows-between-releases) come from a second, wider
+sweep of **both** stores — 485 transcript files, 144,442 records — because the record types
+it describes do not exist in the `2.1.198` corpus above.
+
 ---
 
 ## On-disk layout
@@ -93,7 +97,8 @@ over a representative 412-line session:
 
 Also observed in our corpus: `agent-name` (146 occurrences — a user-facing name for an
 agent session, distinct from `ai-title`) and `pr-link`. Reported elsewhere but not seen
-here: `summary`, `custom-title`, `compact-boundary`. Assume the list is open-ended.
+here: `summary`, `custom-title`, `compact-boundary`. Assume the list is open-ended — see
+[trap 11](#11-the-type-list-grows-between-releases) for what happened when it did.
 
 ### Which records carry a `uuid`
 
@@ -102,7 +107,7 @@ Measured over a 20-file sample:
 
 | Carries `uuid` | Does not |
 | --- | --- |
-| `user`, `assistant`, `system`, **`attachment`** | `mode`, `permission-mode`, `file-history-snapshot`, `ai-title`, `last-prompt`, `queue-operation`, `pr-link`, `agent-name` |
+| `user`, `assistant`, `system`, **`attachment`** | `mode`, `permission-mode`, `file-history-snapshot`, `ai-title`, `last-prompt`, `queue-operation`, `pr-link`, `agent-name`, `atis-latch`, `bridge-session`, `frame-link`, `artifact-comment-monitor`, `artifact-autoreact-ledger` |
 
 `attachment` being in the left column is [trap 1](#1-the-conversation-graph-is-wider-than-the-conversation).
 `file-history-snapshot` being in the right column is what makes
@@ -317,7 +322,41 @@ Finding the second store is its own small minefield — `wsl.exe` speaks UTF-16L
 messages arrive on *stdout* in a different encoding than the command output, and reading a
 distro at all wakes it up. See [ADR 0005](adr/0005-two-claude-code-data-stores.md).
 
-### 11. `thinking` blocks are signed and mostly empty
+### 11. The `type` list grows between releases
+
+✅ **verified — 306 records, 5 new types, first written by `2.1.238`**
+
+Our `2.1.198` corpus knows thirteen record types. The WSL store on the same machine runs
+`2.1.246` and its transcripts contain five more, all of them added around `2.1.238` and all
+of them connected to sessions bridged to claude.ai:
+
+| `type` | Count | Carries `uuid` | What it is |
+| --- | ---: | :---: | --- |
+| `atis-latch` | 141 | — | One per turn while the session is bridged. `atis` was `""` in **all 141** — meaning unknown |
+| `bridge-session` | 140 | — | Ties the local session to its claude.ai counterpart. Carries `bridgeSessionId`, `lastSequenceNum`, and the account's `ownerAccountUuid` / `ownerOrganizationUuid` |
+| `artifact-autoreact-ledger` | 14 | — | Per-artifact reaction bookkeeping, keyed by artifact id. Has its own schema `v` |
+| `frame-link` | 9 | — | A claude.ai artifact the session produced. **Two shapes**: 1 record named the artifact (`path`, `frameUrl`, `title`), the other 8 were a bare `artifactCount` + `timestamp` |
+| `artifact-comment-monitor` | 2 | — | Per-artifact comment state, keyed by artifact id |
+
+**None of the five carries a `uuid`**, and that is the fact worth checking rather than
+assuming. `attachment` does, which is why excluding it severed 1,345 records (trap 1). These
+five never touched the graph — they were a *display* failure, 306 records rendering as
+"unrecognised" while sitting in the index intact. Different severity, and the only way to
+know which you have is to look.
+
+The `ownerAccountUuid` / `ownerOrganizationUuid` pair on `bridge-session` are stable account
+identifiers rather than session data. The parser reads neither: a field that enters the
+domain model enters the database and `sightline export` with it.
+
+Two related things live nearby and are **not** transcript:
+
+- `<session>/subagents/workflows/wf_<id>/journal.jsonl` — the Workflow tool's own journal,
+  with `started` / `result` records (202 in our Windows store) and no transcript envelope at
+  all. The `agent-*.jsonl` glob already excludes it. Don't widen that glob.
+- The `signature` on a `thinking` block is base64 protobuf, and the organization uuid is
+  *inside* it. Any redaction that only inspects the encoded string will miss it.
+
+### 12. `thinking` blocks are signed and mostly empty
 
 `content[]` entries of type `thinking` carry a long `signature` and frequently an empty
 `thinking` string. Don't render the signature, don't count it toward length, and don't
@@ -353,5 +392,6 @@ read only the tail. If the file shrank or the prefix hash changed, reparse from 
 | --- | --- | --- |
 | `2.1.198` | Aug 2026 | Baseline for this document. Subagents in sibling files; `ai-title`, `agent-name`, `queue-operation`, `pr-link` present. Attachments participate in the uuid graph. No session-continuation mismatches and no genuinely dangling `parentUuid` observed. |
 | `2.1.198` | Sep 2026 | Second store found on the same machine (trap 10). Live session registry documented separately in `docs/LIVE-SESSIONS.md`. No transcript-format delta. |
+| `2.1.238`–`2.1.241` | Sep 2026 | Read from the WSL store (binary now at `2.1.246`; no session has run under it yet, so the newest records we can attest to are `2.1.241`). **Five new record types** — `atis-latch`, `bridge-session`, `frame-link`, `artifact-comment-monitor`, `artifact-autoreact-ledger` — all tied to claude.ai bridging, none carrying a `uuid`. See [trap 11](#11-the-type-list-grows-between-releases). Fixture: `wsl-artifact-records`. `last-prompt` also appears without its `lastPrompt` field, but that is not new — it happens at `2.1.198` too. |
 
 Add a row whenever a fixture for a new version is introduced, and describe the delta.
