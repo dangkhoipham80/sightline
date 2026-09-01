@@ -191,6 +191,31 @@ export function writeSession(db: SightlineDatabase, input: SessionInput): void {
       )
     }
 
+    // Keyed per session, so a response that legitimately appears in two transcripts is
+    // stored twice and deduplicated at query time. `ON CONFLICT DO NOTHING` guards only
+    // against the same key arriving twice within one session's own event list.
+    const insertTokenEvent = db.prepare(
+      `INSERT INTO token_events (session_id, dedupe_key, ts, model, agent_id,
+                                 input_tokens, output_tokens, cache_read_tokens,
+                                 cache_write_5m_tokens, cache_write_1h_tokens)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(session_id, dedupe_key) DO NOTHING`,
+    )
+    for (const event of summary.tokenEvents) {
+      insertTokenEvent.run(
+        summary.sessionId,
+        event.dedupeKey,
+        event.timestamp ?? null,
+        event.model ?? null,
+        event.agentId ?? null,
+        event.usage.inputTokens,
+        event.usage.outputTokens,
+        event.usage.cacheReadTokens,
+        event.usage.cacheCreation5mTokens,
+        event.usage.cacheCreation1hTokens,
+      )
+    }
+
     const insertArtifact = db.prepare(
       'INSERT INTO artifacts (session_id, kind, payload_json, seq) VALUES (?, ?, ?, ?)',
     )

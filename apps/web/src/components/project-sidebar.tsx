@@ -1,7 +1,9 @@
 import type { ProjectRow } from '@sightline/db'
 import { SidebarLink } from '@/components/sidebar-link'
+import { UsageMeterFooter } from '@/components/usage-meter'
 import { compact } from '@/lib/format'
 import { groupByStore } from '@/lib/store-groups'
+import type { UsageMeter } from '@/lib/usage'
 
 /**
  * The persistent project list, grouped by the `~/.claude` each project's work lives in.
@@ -15,15 +17,23 @@ import { groupByStore } from '@/lib/store-groups'
  *
  * Hidden below `lg`, where there is no room for it and the dashboard is the navigation.
  */
-export function ProjectSidebar({ projects }: { projects: readonly ProjectRow[] }) {
+export function ProjectSidebar({
+  projects,
+  meter,
+}: {
+  projects: readonly ProjectRow[]
+  meter: UsageMeter
+}) {
   const groups = groupByStore(projects)
 
   return (
     <nav
       aria-label="Projects"
-      className="fixed bottom-0 start-0 top-bar z-10 hidden w-sidebar overflow-y-auto border-e border-rule bg-panel lg:block"
+      // `flex-col` so the usage footer can sit at the bottom and the project list scroll
+      // above it. The nav itself stops being the scroll container; the list inside is.
+      className="fixed bottom-0 start-0 top-bar z-10 hidden w-sidebar flex-col border-e border-rule bg-panel lg:flex"
     >
-      <div className="py-3">
+      <div className="flex-1 overflow-y-auto py-3">
         {groups.map((group) => (
           <section key={group.key} className="mb-4">
             {/* Stacked, not side by side. `band-label` is uppercase with 0.18em tracking,
@@ -54,6 +64,7 @@ export function ProjectSidebar({ projects }: { projects: readonly ProjectRow[] }
           </section>
         ))}
       </div>
+      <UsageMeterFooter meter={meter} />
     </nav>
   )
 }

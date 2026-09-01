@@ -200,4 +200,41 @@ ALTER TABLE sessions ADD COLUMN store_root   TEXT;
 CREATE INDEX idx_sessions_store ON sessions(store_kind, store_distro);
 `,
   },
+  {
+    id: '003-token-events',
+    // No backticks in the SQL below: it is a template literal, and one would end it.
+    sql: /* sql */ `
+-- One row per billable API response, which is emphatically not one row per assistant
+-- record: a single response is written as several records that each repeat the same
+-- usage. See docs/USAGE-ACCOUNTING.md.
+--
+-- The primary key is (session_id, dedupe_key) and NOT dedupe_key alone, which looks like
+-- the obvious choice and is a trap. writeSession is delete-then-insert per session, so a
+-- globally unique key would let whichever session was ingested first own the row -- and
+-- then delete it when that session is re-ingested, silently destroying spend that is still
+-- attributable to a second session holding the same response. Resuming a session copies
+-- earlier turns into the new file, so 476 responses on the reference machine genuinely do
+-- live in two sessions at once.
+--
+-- Deduplicate globally at QUERY time instead, where it costs a GROUP BY and nothing else.
+CREATE TABLE token_events (
+  session_id            TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+  dedupe_key            TEXT NOT NULL,
+  ts                    TEXT,
+  model                 TEXT,
+  -- Set for a sidechain event, so subagent spend stays attributable after the merge.
+  agent_id              TEXT,
+  input_tokens          INTEGER NOT NULL DEFAULT 0,
+  output_tokens         INTEGER NOT NULL DEFAULT 0,
+  cache_read_tokens     INTEGER NOT NULL DEFAULT 0,
+  -- Split by TTL because the two bill differently; the flat total cannot be costed.
+  cache_write_5m_tokens INTEGER NOT NULL DEFAULT 0,
+  cache_write_1h_tokens INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (session_id, dedupe_key)
+);
+
+-- The meter's only query shape: everything in a time range, newest first.
+CREATE INDEX idx_token_events_ts ON token_events(ts);
+`,
+  },
 ]

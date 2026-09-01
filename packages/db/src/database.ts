@@ -109,6 +109,7 @@ export function resetDerivedTables(db: SightlineDatabase): void {
   db.transaction(() => {
     // Order matters only for readability; foreign keys cascade from sessions.
     db.exec(`
+      DELETE FROM token_events;
       DELETE FROM artifacts;
       DELETE FROM file_touches;
       DELETE FROM subagents;

@@ -16,7 +16,7 @@ allowed to cost a cent.
 | 6 | `feat/search` | FTS5 queries + ⌘K palette, scoped and global | ✅ |
 | 7 | `feat/ai-summaries` | `packages/ai`: provider abstraction, redaction, Tier 1 digests, Tier 2 project briefs, caching | |
 | 8 | `feat/mcp-server` | `packages/mcp` + `sightline export` | |
-| 9 | `feat/cli` | `sightline serve \| scan \| summarize \| mcp \| export`, npx packaging | |
+| 9 | `feat/cli` | `sightline serve \| scan \| summarize \| mcp \| export`, npx packaging — `apps/cli` and `sightline statusline` already exist, landed with 16 | |
 | 10 | `docs/polish` | README, screenshots, ADRs, install guide | |
 
 ### v0.4 — the cockpit

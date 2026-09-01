@@ -66,6 +66,20 @@ export type {
   UserRecord,
 } from './types.js'
 export { hasGraphIdentity, isConversationRecord } from './types.js'
+export type { GroupIntoBlocksOptions, UsageBlock } from './usage/blocks.js'
+export { activeBlock, BLOCK_HOURS, groupIntoBlocks } from './usage/blocks.js'
+export type {
+  Confidence,
+  EstimatedWindow,
+  MeterWindow,
+  OfficialWindow,
+  RateLimitReading,
+  RateLimitWindow,
+  UnknownWindow,
+} from './usage/meter.js'
+export { isPlausiblePercentage } from './usage/meter.js'
+export type { CostBreakdown, ModelPricing, PricingTable } from './usage/pricing.js'
+export { costByModel, costUsage } from './usage/pricing.js'
 export type { DiffHunk, DiffLine, DiffLineKind, DiffStat, FileDiff } from './view/diff.js'
 export { diffLines } from './view/diff.js'
 export type { MessageLocation } from './view/locate.js'

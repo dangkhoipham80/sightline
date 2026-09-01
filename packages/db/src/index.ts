@@ -31,5 +31,15 @@ export type { Migration } from './schema.js'
 export { MIGRATIONS } from './schema.js'
 export type { MatchQueryOptions } from './search-query.js'
 export { toMatchQuery } from './search-query.js'
+export {
+  appendRateLimits,
+  latestRateLimits,
+  loadPricing,
+  pricingPath,
+  rateLimitsPath,
+  sightlineDir,
+} from './sightline-home.js'
+export type { TokenEventQuery } from './usage-queries.js'
+export { hasTokenEvents, listTokenEvents } from './usage-queries.js'
 export type { ProjectInput, SessionInput } from './writer.js'
 export { upsertProject, writeSession } from './writer.js'
