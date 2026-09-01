@@ -6,4 +6,4 @@ export const PRODUCT_NAME = 'Sightline'
  * against the value stored in the database and forces a full re-ingest on mismatch,
  * which is cheap because the source of truth is always the JSONL on disk.
  */
-export const SIGHTLINE_SCHEMA_VERSION = 1
+export const SIGHTLINE_SCHEMA_VERSION = 2

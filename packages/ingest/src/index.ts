@@ -5,10 +5,17 @@
  * `docs/ARCHITECTURE.md`.
  */
 
-export type { DiscoveredSession, LoadedTranscript } from './discover.js'
-export { defaultProjectsRoot, discoverSessions, loadTranscript } from './discover.js'
+export type { ClaudeStore, DiscoveredSession, LoadedTranscript } from './discover.js'
+export {
+  defaultProjectsRoot,
+  discoverSessions,
+  loadTranscript,
+  localLaunchStore,
+  localStore,
+  storeAt,
+} from './discover.js'
 export type { ProjectIdentity } from './grouping.js'
-export { findGitRoot, hostAccessPath, resolveProject } from './grouping.js'
+export { findGitRoot, hostAccessPath, hostPathForStore, resolveProject } from './grouping.js'
 export type { Indexer, IngestOutcome } from './indexer.js'
 export { createIndexer } from './indexer.js'
 export type { ScanOptions, ScanProgress, ScanResult } from './scan.js'

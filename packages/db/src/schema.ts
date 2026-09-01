@@ -176,4 +176,28 @@ CREATE TRIGGER messages_fts_au AFTER UPDATE ON messages BEGIN
 END;
 `,
   },
+  {
+    id: '002-session-store',
+    // No backticks in the SQL below: it is a template literal, and one would end it. The
+    // resulting parse error names a line thirty rows further down, which is a bad afternoon.
+    sql: /* sql */ `
+-- Which ~/.claude this session's transcript was written to, and therefore which claude
+-- binary can resume it and where a terminal for it must be spawned. Emphatically *not*
+-- derivable from cwd: the Windows store holds sessions whose cwd is \\wsl.localhost...
+-- See docs/adr/0005-two-claude-code-data-stores.md.
+--
+-- On sessions rather than on projects because one project is routinely worked on from
+-- both stores. A project's store is whatever its most recent session used, derived at
+-- query time in listProjects so it cannot go stale.
+--
+-- Nullable because SQLite cannot add a NOT NULL column without a default, and a default
+-- here would be a guess. The SIGHTLINE_SCHEMA_VERSION bump that ships with this migration
+-- re-ingests every session, which is what actually fills them.
+ALTER TABLE sessions ADD COLUMN store_kind   TEXT;
+ALTER TABLE sessions ADD COLUMN store_distro TEXT;
+ALTER TABLE sessions ADD COLUMN store_root   TEXT;
+
+CREATE INDEX idx_sessions_store ON sessions(store_kind, store_distro);
+`,
+  },
 ]

@@ -1,3 +1,5 @@
+import type { LaunchStore } from '@sightline/core'
+import { parseLaunchStore } from '@sightline/core'
 import type { SightlineDatabase } from './database.js'
 import { toMatchQuery } from './search-query.js'
 
@@ -10,6 +12,19 @@ export interface ProjectRow {
   repoUrl: string | null
   hostKind: string
   distro: string | null
+  /**
+   * Which `~/.claude` this project's most recent session came from — and so where a
+   * terminal for it opens, and which group it belongs to in the sidebar.
+   *
+   * Distinct from `hostKind`, which describes the *shape of the path* and answers a
+   * different question. They disagree for a Windows `claude` run with a UNC working
+   * directory, which is four of seventeen projects on the reference machine. Grouping the
+   * sidebar on `hostKind` would file those under Linux and open the wrong shell.
+   *
+   * Null for a project with no session carrying a store — an index that predates the
+   * re-ingest, in practice.
+   */
+  store: LaunchStore | null
   firstSeen: string | null
   lastActive: string | null
   orphaned: boolean
@@ -32,6 +47,16 @@ export interface SessionRow {
   slug: string | null
   gitBranch: string | null
   cwd: string | null
+  /**
+   * Which `~/.claude` holds this transcript, and so which `claude` can resume it.
+   *
+   * Null when the row predates the store columns — the resume command is then unknowable
+   * rather than guessable, and saying nothing beats emitting a command that runs somewhere
+   * else and reports success. See ADR 0005.
+   */
+  store: LaunchStore | null
+  /** That store's root directory: where this session's live registry lives. */
+  storeRoot: string | null
   startedAt: string | null
   endedAt: string | null
   durationMs: number | null
@@ -77,10 +102,26 @@ export function listProjects(
 ): ProjectRow[] {
   const rows = db
     .prepare(
+      // The store is *derived* here rather than denormalised onto `projects`. A project
+      // can hold sessions from two stores at once, and a column would be written by
+      // whichever session happened to be ingested last — stale, and silently so. The
+      // window function picks the newest session's store, which is the one a "resume this
+      // project" action should honour.
       `SELECT p.*,
               (SELECT COUNT(*) FROM sessions s WHERE s.project_id = p.id) AS session_count,
-              (SELECT COALESCE(SUM(s.message_count), 0) FROM sessions s WHERE s.project_id = p.id) AS message_count
+              (SELECT COALESCE(SUM(s.message_count), 0) FROM sessions s WHERE s.project_id = p.id) AS message_count,
+              latest.store_kind   AS store_kind,
+              latest.store_distro AS store_distro
          FROM projects p
+         LEFT JOIN (
+           SELECT project_id, store_kind, store_distro,
+                  ROW_NUMBER() OVER (
+                    PARTITION BY project_id
+                    ORDER BY started_at DESC NULLS LAST, rowid DESC
+                  ) AS rn
+             FROM sessions
+            WHERE store_kind IS NOT NULL
+         ) latest ON latest.project_id = p.id AND latest.rn = 1
         WHERE (@includeArchived = 1 OR p.archived = 0)
         ORDER BY p.last_active DESC NULLS LAST, p.display_name ASC`,
     )
@@ -330,6 +371,9 @@ function toProjectRow(row: unknown): ProjectRow {
     repoUrl: (r['repo_url'] as string | null) ?? null,
     hostKind: String(r['host_kind']),
     distro: (r['distro'] as string | null) ?? null,
+    store:
+      parseLaunchStore(r['store_kind'] as string | null, r['store_distro'] as string | null) ??
+      null,
     firstSeen: (r['first_seen'] as string | null) ?? null,
     lastActive: (r['last_active'] as string | null) ?? null,
     orphaned: r['orphaned'] === 1,
@@ -352,6 +396,10 @@ function toSessionRow(row: unknown): SessionRow {
     slug: (r['slug'] as string | null) ?? null,
     gitBranch: (r['git_branch'] as string | null) ?? null,
     cwd: (r['cwd'] as string | null) ?? null,
+    store:
+      parseLaunchStore(r['store_kind'] as string | null, r['store_distro'] as string | null) ??
+      null,
+    storeRoot: (r['store_root'] as string | null) ?? null,
     startedAt: (r['started_at'] as string | null) ?? null,
     endedAt: (r['ended_at'] as string | null) ?? null,
     durationMs: (r['duration_ms'] as number | null) ?? null,

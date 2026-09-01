@@ -1,4 +1,4 @@
-import type { HostKind, ParsedSession, TranscriptRecord } from '@sightline/core'
+import type { HostKind, LaunchStore, ParsedSession, TranscriptRecord } from '@sightline/core'
 import { hasThinking } from '@sightline/core'
 import type { SightlineDatabase } from './database.js'
 
@@ -19,6 +19,10 @@ export interface SessionInput {
   filePath: string
   fileSize: number
   fileMtimeMs: number
+  /** Which `~/.claude` the transcript came from — see ADR 0005. Never inferred from `cwd`. */
+  store: LaunchStore
+  /** That store's root directory. */
+  storeRoot: string
   parsed: ParsedSession
 }
 
@@ -92,6 +96,7 @@ export function writeSession(db: SightlineDatabase, input: SessionInput): void {
     db.prepare(
       `INSERT INTO sessions (
          id, project_id, parent_session_id, file_path, file_size, file_mtime_ms,
+         store_kind, store_distro, store_root,
          ai_title, agent_name, slug, git_branch, version, cwd, last_prompt,
          started_at, ended_at, duration_ms,
          record_count, message_count, user_message_count, assistant_message_count,
@@ -99,6 +104,7 @@ export function writeSession(db: SightlineDatabase, input: SessionInput): void {
          models, tokens_in, tokens_out, tokens_cache_read, tokens_cache_write
        ) VALUES (
          @id, @projectId, @parentSessionId, @filePath, @fileSize, @fileMtimeMs,
+         @storeKind, @storeDistro, @storeRoot,
          @aiTitle, @agentName, @slug, @gitBranch, @version, @cwd, @lastPrompt,
          @startedAt, @endedAt, @durationMs,
          @recordCount, @messageCount, @userMessageCount, @assistantMessageCount,
@@ -112,6 +118,9 @@ export function writeSession(db: SightlineDatabase, input: SessionInput): void {
       filePath: input.filePath,
       fileSize: input.fileSize,
       fileMtimeMs: input.fileMtimeMs,
+      storeKind: input.store.host,
+      storeDistro: input.store.host === 'wsl' ? input.store.distro : null,
+      storeRoot: input.storeRoot,
       aiTitle: summary.aiTitle ?? null,
       agentName: findAgentName(parsed.records),
       slug: summary.slug ?? null,

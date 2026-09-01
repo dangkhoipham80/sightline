@@ -1,9 +1,11 @@
 import type { SightlineDatabase } from '@sightline/db'
-import { defaultProjectsRoot, discoverSessions } from './discover.js'
+import type { ClaudeStore } from './discover.js'
+import { discoverSessions, localStore } from './discover.js'
 import { createIndexer } from './indexer.js'
 
 export interface ScanOptions {
-  root?: string
+  /** Which `~/.claude` to index. Defaults to this machine's own. */
+  store?: ClaudeStore
   /** Re-read every transcript even if its size and mtime are unchanged. */
   force?: boolean
   onProgress?: (progress: ScanProgress) => void
@@ -41,8 +43,7 @@ export interface ScanResult {
  */
 export function scan(db: SightlineDatabase, options: ScanOptions = {}): ScanResult {
   const started = Date.now()
-  const root = options.root ?? defaultProjectsRoot()
-  const sessions = discoverSessions(root)
+  const sessions = discoverSessions(options.store ?? localStore())
   const indexer = createIndexer(db)
 
   const result: ScanResult = {

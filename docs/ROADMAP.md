@@ -28,8 +28,9 @@ independent and either can go first.
 | --- | --- | --- | --- |
 | 11 | `docs/cockpit-direction` | This document, the PRD scope change, `docs/LIVE-SESSIONS.md`, ADRs 0003–0005 | ✅ |
 | 12 | `fix/host-aware-commands` | `LaunchStore` in `core`; fix `resumeCommand` for the Windows-store/UNC-cwd case and its cmd-only `cd /d`; add `buildSpawnPlan` + `matchHostPath`; wire the two web components to `core` | ✅ |
-| 13 | `chore/ci` | Activate `.github/workflows-pending/ci.yml`, add a `windows-latest` leg | 🚧 |
-| 14 | `feat/multi-store-ingest` | Discover and index every `~/.claude` on the machine; `projects.store_kind`, `sessions.store_root` | |
+| 13 | `chore/ci` | Activate `.github/workflows-pending/ci.yml`, add a `windows-latest` leg | ✅ |
+| 14a | `feat/store-aware-ingest` | Ingest carries a `LaunchStore` through to `sessions.store_kind` / `store_distro` / `store_root`; two spellings of one WSL directory resolve to one project; schema bump + re-ingest | 🚧 |
+| 14b | `feat/wsl-store-discovery` | Enumerate distros with `wsl.exe -l -q`, find each one's `$HOME`, index its store over `\\wsl.localhost\…`; polling watcher for the 9P share | |
 | 15 | `feat/project-sidebar` | Persistent sidebar grouped by store, `InstrumentBar` hoisted into the layout, CONSOLE/REVIEW tabs per project | |
 | 16 | `feat/usage-meter` | `token_events` migration, 5-hour blocks, `sightline statusline` capture, pricing loader, sidebar footer | |
 | 17 | `feat/terminal-sidecar` | `packages/terminal`: `ws` server, rendezvous, origin allowlist, ticket HMAC, protocol codec. No PTY yet | |
@@ -37,11 +38,14 @@ independent and either can go first.
 | 19 | `feat/pty-supervisor` | `@lydell/node-pty` + `@xterm/headless` mirror, backpressure, orphan reaping | |
 | 20 | `feat/terminal-ui` | xterm v6 client, LRU pool, reconnect, launcher | |
 
-The ordering is deliberate in three places. **12 before anything that spawns** — the argv
+The ordering is deliberate in four places. **12 before anything that spawns** — the argv
 logic is pure string work and gets reviewed and tested as such, before a process can run
 it. **14 before 15**, because the sidebar's Windows/Linux split is wrong until stores are
-separated. **17 and 19 are split** rather than one `feat/terminal` PR, so the socket that
-spawns shells gets reviewed on its own instead of alongside PTY lifecycle code.
+separated. **14a before 14b**, because everything except the discovery step is pure enough
+to test exhaustively, while enumerating distros is I/O that can be slow (9P) or absent (a
+stopped distro) — worth reviewing on its own rather than alongside a schema change.
+**17 and 19 are split** rather than one `feat/terminal` PR, so the socket that spawns
+shells gets reviewed on its own instead of alongside PTY lifecycle code.
 
 A throwaway `spike/pty` branch runs before 17 and is never merged. Its first question is
 whether `@xterm/addon-serialize` round-trips a full-screen `claude` TUI out of

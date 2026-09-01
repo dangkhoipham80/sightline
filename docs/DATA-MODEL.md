@@ -23,7 +23,7 @@ One row per real repository, **not** per Claude Code folder key.
 | `folder_keys` | JSON array; several Claude folder keys map to one project |
 | `display_name` | derived from repo name, user-overridable |
 | `repo_url` | from `git remote` or from `pr-link` records |
-| `host_kind` | `wsl` \| `windows` \| `unix` — drives resume-command generation |
+| `host_kind` | `wsl` \| `windows` \| `unix` — the shape of the **path**. Identity and grouping only; never a launch decision, see `sessions.store_kind` |
 | `first_seen`, `last_active` | |
 | `orphaned` | directory no longer exists; keep the history, flag the row |
 | `archived` | user-hidden |
@@ -36,6 +36,8 @@ One row per real repository, **not** per Claude Code folder key.
 | `project_id` | |
 | `parent_session_id` | set when this file continues an earlier session — see trap 4 in `TRANSCRIPT-FORMAT.md` |
 | `file_path`, `file_size`, `file_mtime_ms` | the change-detection signature; unchanged means skip |
+| `store_kind`, `store_distro` | which `~/.claude` holds this transcript, and so which `claude` can resume it. **Not derivable from `cwd`** — the Windows store is full of `\\wsl.localhost\…` working directories. See [ADR 0005](adr/0005-two-claude-code-data-stores.md) |
+| `store_root` | that store's directory — also where its live-session registry lives |
 | `ai_title` | last `ai-title` record — Claude's own name for the session |
 | `slug`, `git_branch` | |
 | `started_at`, `ended_at`, `duration_ms` | |

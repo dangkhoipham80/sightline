@@ -2,8 +2,52 @@ import type { Dirent } from 'node:fs'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
-import type { SubagentInput } from '@sightline/core'
+import type { LaunchStore, SubagentInput } from '@sightline/core'
 import { agentIdFromFilename } from '@sightline/core'
+
+/**
+ * One `~/.claude` on this machine.
+ *
+ * A machine has more than one — a Windows box running WSL has a Windows store and a store
+ * per distro, with separate settings, separate cleanup schedules and separate histories.
+ * See `docs/adr/0005-two-claude-code-data-stores.md`.
+ *
+ * `launch` is the load-bearing field and the reason this type exists at all: it says which
+ * `claude` binary can resume the sessions found here. It is **not** derivable from the
+ * `cwd` recorded inside them — the Windows store is full of `\\wsl.localhost\…` working
+ * directories that only the Windows binary can reopen.
+ */
+export interface ClaudeStore {
+  launch: LaunchStore
+  /** The store directory itself: `C:\Users\khoi\.claude`, `/home/me/.claude`. */
+  root: string
+  /**
+   * Where transcripts live. Normally `<root>/projects`, kept explicit because a store
+   * reached from another host is opened through a path that does not compose that way.
+   */
+  projectsRoot: string
+}
+
+/**
+ * The store shape of the machine Sightline is running on.
+ *
+ * Never `wsl`: that variant describes a distro's store as seen *from Windows*, reached
+ * over `\\wsl.localhost\…`. A Sightline running inside the distro is plainly `unix`, and
+ * saying otherwise would emit `wsl.exe` commands on a host that has no `wsl.exe`.
+ */
+export function localLaunchStore(): LaunchStore {
+  return process.platform === 'win32' ? { host: 'windows' } : { host: 'unix' }
+}
+
+/** The store rooted at a `~/.claude` directory. */
+export function storeAt(root: string, launch: LaunchStore = localLaunchStore()): ClaudeStore {
+  return { launch, root, projectsRoot: join(root, 'projects') }
+}
+
+/** This machine's own `~/.claude`. The only store PR 14a indexes. */
+export function localStore(): ClaudeStore {
+  return storeAt(join(homedir(), '.claude'))
+}
 
 export interface DiscoveredSession {
   sessionId: string
@@ -11,19 +55,24 @@ export interface DiscoveredSession {
   filePath: string
   fileSize: number
   fileMtimeMs: number
+  /** Which `claude` can resume this session. A property of the store, never of the `cwd`. */
+  store: LaunchStore
+  /** The `~/.claude` this came out of — also where its live-session registry lives. */
+  storeRoot: string
 }
 
 export function defaultProjectsRoot(): string {
-  return join(homedir(), '.claude', 'projects')
+  return localStore().projectsRoot
 }
 
 /**
- * Enumerate every transcript under a projects root.
+ * Enumerate every transcript in a store.
  *
  * Cheap by design — `stat` only. Deciding whether a session needs re-reading is the
  * caller's job, and it only needs size and mtime to make that call.
  */
-export function discoverSessions(root: string = defaultProjectsRoot()): DiscoveredSession[] {
+export function discoverSessions(store: ClaudeStore = localStore()): DiscoveredSession[] {
+  const root = store.projectsRoot
   if (!existsSync(root)) return []
 
   const found: DiscoveredSession[] = []
@@ -52,6 +101,8 @@ export function discoverSessions(root: string = defaultProjectsRoot()): Discover
           filePath,
           fileSize: stats.size,
           fileMtimeMs: Math.floor(stats.mtimeMs),
+          store: store.launch,
+          storeRoot: store.root,
         })
       } catch {
         // Disappeared between readdir and stat. Nothing to index.
@@ -73,7 +124,7 @@ export interface LoadedTranscript {
  * Subagent transcripts live in `<session>/subagents/`, not inline. Loading them is not
  * optional — they contain most of the work in any session that delegated.
  */
-export function loadTranscript(session: DiscoveredSession): LoadedTranscript {
+export function loadTranscript(session: Pick<DiscoveredSession, 'filePath'>): LoadedTranscript {
   const lines = readFileSync(session.filePath, 'utf8').split('\n')
 
   const subagentDir = join(session.filePath.slice(0, -'.jsonl'.length), 'subagents')

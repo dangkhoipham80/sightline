@@ -13,6 +13,7 @@ import { join, relative } from 'node:path'
 import { encodeProjectFolderKey } from '@sightline/core'
 import { openDatabase, type SightlineDatabase } from '@sightline/db'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { storeAt } from './discover.js'
 import { scan } from './scan.js'
 
 /**
@@ -150,7 +151,7 @@ describe("Claude Code's data directory", () => {
     // comparison would pass vacuously and this test would guard nothing.
     expect(before.size).toBeGreaterThan(5)
 
-    const result = scan(db, { root: join(claudeDir, 'projects') })
+    const result = scan(db, { store: storeAt(claudeDir) })
     expect(result.ingested).toBe(1)
     expect(result.failed).toEqual([])
 
@@ -163,13 +164,13 @@ describe("Claude Code's data directory", () => {
 
   it('is still unchanged by a forced re-ingest, which reparses instead of skipping', () => {
     buildClaudeDirectory()
-    scan(db, { root: join(claudeDir, 'projects') })
+    scan(db, { store: storeAt(claudeDir) })
     const before = fingerprint(claudeDir)
 
     // `force` is the path that does the most work per file, so it is the one most likely
     // to touch something. Without it a second scan skips on the size+mtime signature and
     // proves considerably less.
-    const result = scan(db, { root: join(claudeDir, 'projects'), force: true })
+    const result = scan(db, { store: storeAt(claudeDir), force: true })
     expect(result.ingested).toBe(1)
     expect(result.skipped).toBe(0)
 

@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import type { HostPath } from '@sightline/core'
-import { parseHostPath } from '@sightline/core'
+import type { HostPath, LaunchStore } from '@sightline/core'
+import { parseHostPath, toWslUnc } from '@sightline/core'
 
 export interface ProjectIdentity {
   id: string
@@ -25,9 +25,13 @@ export interface ProjectIdentity {
  * When the directory is gone — a deleted or renamed repo — we keep the last known path
  * and mark the project orphaned rather than dropping it. Its history is frequently the
  * exact thing someone wants to look up.
+ *
+ * `store` is which `~/.claude` the session came from. It is needed here, and not only at
+ * launch time, because it is what tells two spellings of one directory apart from two
+ * directories — see `hostPathForStore`.
  */
-export function resolveProject(cwd: string): ProjectIdentity {
-  const hostPath = parseHostPath(cwd)
+export function resolveProject(cwd: string, store: LaunchStore): ProjectIdentity {
+  const hostPath = hostPathForStore(cwd, store)
   const accessible = isAccessible(hostPath)
   const gitRoot = accessible ? findGitRoot(hostPath) : undefined
 
@@ -48,6 +52,30 @@ export function resolveProject(cwd: string): ProjectIdentity {
     hostPath,
     orphaned: !accessible,
   }
+}
+
+/**
+ * Read a recorded `cwd` in the light of the store that recorded it.
+ *
+ * **This is where one project's two halves are reunited.** The same directory is spelled
+ * two ways depending on which `claude` was standing in it: the binary inside a distro
+ * records `/home/me/code/app`, the Windows binary entering over the share records
+ * `\\wsl.localhost\Ubuntu-24.04\home\me\code\app`. Grouped on the raw string those are two
+ * projects, and the owner sees half a history twice with nothing saying so — the
+ * `App_BlueOne_v2` case in ADR 0005.
+ *
+ * A bare POSIX `cwd` from a `wsl` store is therefore promoted to its UNC form: same
+ * identity as the Windows-recorded half, and — since a `wsl` store is only ever *read*
+ * from Windows — the spelling this process can actually open to find `.git`.
+ *
+ * The promotion is deliberately one-directional. A UNC `cwd` is left exactly as it is,
+ * whatever store it came from: it is already unambiguous, and rewriting it towards a
+ * distro would re-create the conflation this whole design exists to remove.
+ */
+export function hostPathForStore(cwd: string, store: LaunchStore): HostPath {
+  const parsed = parseHostPath(cwd)
+  if (store.host !== 'wsl' || store.distro === '' || parsed.kind !== 'unix') return parsed
+  return parseHostPath(toWslUnc(store.distro, parsed.nativePath))
 }
 
 function hashIdentity(hostPath: HostPath, identityPath: string): string {
@@ -105,8 +133,7 @@ function nativePath(hostPath: HostPath, segments: string[]): string {
  */
 export function hostAccessPath(hostPath: HostPath, path: string): string {
   if (hostPath.kind !== 'wsl') return path
-  const relative = path.replace(/^\/+/, '').replace(/\//g, '\\')
-  return `\\\\wsl.localhost\\${hostPath.distro ?? ''}\\${relative}`
+  return toWslUnc(hostPath.distro ?? '', path)
 }
 
 function isAccessible(hostPath: HostPath): boolean {

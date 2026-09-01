@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { buildSpawnPlan, type LaunchStore, resumeCommand, type SpawnPlanOptions } from './launch.js'
+import {
+  buildSpawnPlan,
+  type LaunchStore,
+  parseLaunchStore,
+  resumeCommand,
+  type SpawnPlanOptions,
+} from './launch.js'
 import { parseHostPath } from './paths.js'
 
 const LAUNCH_DIR = 'C:\\Users\\khoi'
@@ -349,5 +355,32 @@ describe('resumeCommand', () => {
       expect(command).toContain(needle)
       expect(spawned.display).toContain(needle)
     }
+  })
+})
+
+/**
+ * The index stores a `LaunchStore` as two loose columns, so this is the seam where a bad
+ * or absent value gets a chance to become a plausible one. It must not take it: a store we
+ * cannot name is a store we cannot launch against, and the caller withholds the command
+ * rather than aiming it somewhere.
+ */
+describe('parseLaunchStore', () => {
+  it('reads the three store shapes back', () => {
+    expect(parseLaunchStore('windows', null)).toEqual(WINDOWS)
+    expect(parseLaunchStore('unix', null)).toEqual(UNIX)
+    expect(parseLaunchStore('wsl', 'Ubuntu-24.04')).toEqual(WSL)
+  })
+
+  it('ignores a distro on a store that has none', () => {
+    expect(parseLaunchStore('windows', 'Ubuntu-24.04')).toEqual(WINDOWS)
+  })
+
+  /** `wsl -d '' -- claude --resume <id>` is not a command that fails usefully. */
+  it.each([null, undefined, ''])('refuses a distro store with distro %p', (distro) => {
+    expect(parseLaunchStore('wsl', distro)).toBeUndefined()
+  })
+
+  it.each([null, undefined, '', 'linux', 'WINDOWS'])('refuses the kind %p', (kind) => {
+    expect(parseLaunchStore(kind, null)).toBeUndefined()
   })
 })
