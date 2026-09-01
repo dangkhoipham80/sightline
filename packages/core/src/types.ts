@@ -28,6 +28,11 @@ export type RecordKind =
   | 'file-history-snapshot'
   | 'queue-operation'
   | 'pr-link'
+  | 'atis-latch'
+  | 'bridge-session'
+  | 'frame-link'
+  | 'artifact-comment-monitor'
+  | 'artifact-autoreact-ledger'
   | 'raw'
 
 /** Fields shared by conversation records. Bookkeeping records carry almost none of them. */
@@ -168,6 +173,45 @@ export interface PrLinkRecord extends RecordBase {
   prRepository?: string
 }
 
+/*
+ * Records written by a session bridged to claude.ai. All five arrived together around
+ * `2.1.238` and none carries a `uuid`, so none of them touches the conversation graph.
+ */
+
+/** Meaning unknown: `atis` was `""` in every record observed. Kept so it is not `raw`. */
+export interface AtisLatchRecord extends RecordBase {
+  kind: 'atis-latch'
+  atis: string
+}
+
+/**
+ * Links this local session to its claude.ai counterpart. The account and organization
+ * uuids on the wire are deliberately not carried into the domain model — see
+ * `bridgeSessionRecordSchema`.
+ */
+export interface BridgeSessionRecord extends RecordBase {
+  kind: 'bridge-session'
+  bridgeSessionId?: string
+  lastSequenceNum?: number
+}
+
+/** A claude.ai artifact the session produced. Most records carry only the count. */
+export interface FrameLinkRecord extends RecordBase {
+  kind: 'frame-link'
+  path?: string
+  frameUrl?: string
+  title?: string
+  artifactCount?: number
+}
+
+/** Per-artifact bookkeeping. We record which artifacts it mentions, not its internals. */
+export interface ArtifactLedgerRecord extends RecordBase {
+  kind: 'artifact-comment-monitor' | 'artifact-autoreact-ledger'
+  /** The record's own schema version (`v`), not Claude Code's. */
+  ledgerVersion?: number
+  artifactIds: string[]
+}
+
 /** A record whose `type` we don't recognise. Retained so nothing is ever silently lost. */
 export interface RawRecord extends RecordBase {
   kind: 'raw'
@@ -188,6 +232,10 @@ export type TranscriptRecord =
   | FileHistorySnapshotRecord
   | QueueOperationRecord
   | PrLinkRecord
+  | AtisLatchRecord
+  | BridgeSessionRecord
+  | FrameLinkRecord
+  | ArtifactLedgerRecord
   | RawRecord
 
 /** Records a reader would think of as part of the conversation. */
@@ -225,10 +273,18 @@ export interface FileTouch {
   lastSeq: number
 }
 
-export interface Artifact {
-  kind: 'pr-link'
-  prNumber?: number
-  prUrl?: string
-  prRepository?: string
-  seq: number
-}
+/** Something durable a session produced, worth surfacing next to the transcript. */
+export type Artifact =
+  | {
+      kind: 'pr-link'
+      prNumber?: number
+      prUrl?: string
+      prRepository?: string
+      seq: number
+    }
+  | {
+      kind: 'frame-link'
+      frameUrl?: string
+      title?: string
+      seq: number
+    }

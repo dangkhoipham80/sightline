@@ -2,6 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { hasGraphIdentity } from '../types.js'
 import type { SubagentInput } from './subagents.js'
 import { agentIdFromFilename } from './subagents.js'
 import { parseSession } from './transcript.js'
@@ -103,6 +104,89 @@ describe('wsl-snapshot-collision', () => {
     const { lines } = loadFixture('wsl-snapshot-collision')
     const parsed = parseSession({ sessionId: 'wsl-snapshot-collision', lines })
     expect(parsed.summary.cwds[0]).toContain('\\\\wsl.localhost\\Ubuntu-24.04\\')
+  })
+})
+
+describe('wsl-artifact-records', () => {
+  const NEW_AT_2_1_238 = [
+    'atis-latch',
+    'bridge-session',
+    'frame-link',
+    'artifact-comment-monitor',
+    'artifact-autoreact-ledger',
+  ] as const
+
+  it('understands every record type Claude Code added at 2.1.238', () => {
+    const { lines } = loadFixture('wsl-artifact-records')
+    const parsed = parseSession({ sessionId: 'wsl-artifact-records', lines })
+
+    for (const kind of NEW_AT_2_1_238) {
+      expect(parsed.records.some((r) => r.kind === kind)).toBe(true)
+    }
+  })
+
+  /**
+   * Trap 1 asks a specific question of every new record type: does it carry a `uuid`? An
+   * `attachment` does, which is why excluding it severed 1,345 records. These five do not,
+   * so they were only ever a display problem — but that has to be *checked* against the
+   * capture rather than assumed, because the cost of assuming wrong is invisible.
+   */
+  it('keeps the new types out of the conversation graph, because none carries a uuid', () => {
+    const { lines } = loadFixture('wsl-artifact-records')
+    const parsed = parseSession({ sessionId: 'wsl-artifact-records', lines })
+
+    const newRecords = parsed.records.filter((r) =>
+      (NEW_AT_2_1_238 as readonly string[]).includes(r.kind),
+    )
+    expect(newRecords.length).toBeGreaterThan(0)
+    for (const record of newRecords) {
+      expect(record.envelope.uuid).toBeUndefined()
+      expect(hasGraphIdentity(record)).toBe(false)
+    }
+  })
+
+  /**
+   * `bridge-session` arrives carrying `ownerAccountUuid` and `ownerOrganizationUuid`.
+   * Reading a field is a decision to be responsible for it — anything on the record ends up
+   * in the database and in `sightline export`, so these stay in `raw` and nowhere else.
+   */
+  it('does not lift account identifiers off a bridge-session record', () => {
+    const { lines } = loadFixture('wsl-artifact-records')
+    const parsed = parseSession({ sessionId: 'wsl-artifact-records', lines })
+
+    const bridge = parsed.records.find((r) => r.kind === 'bridge-session')
+    expect(bridge).toBeDefined()
+    expect(bridge?.raw.ownerAccountUuid).toBeTypeOf('string')
+    expect(Object.keys(bridge ?? {})).not.toContain('ownerAccountUuid')
+    expect(Object.keys(bridge ?? {})).not.toContain('ownerOrganizationUuid')
+  })
+
+  /**
+   * Eight of the nine `frame-link` records in the source session are a bare
+   * `artifactCount` + `timestamp`; only one names the artifact. Listing all of them would
+   * report nine artifacts where there was one.
+   */
+  it('lists only the frame-link that actually names an artifact', () => {
+    const { lines } = loadFixture('wsl-artifact-records')
+    const parsed = parseSession({ sessionId: 'wsl-artifact-records', lines })
+
+    const frameLinks = parsed.records.filter((r) => r.kind === 'frame-link')
+    expect(frameLinks).toHaveLength(2)
+    expect(frameLinks.filter((r) => r.frameUrl !== undefined)).toHaveLength(1)
+
+    const frameArtifacts = parsed.summary.artifacts.filter((a) => a.kind === 'frame-link')
+    expect(frameArtifacts).toHaveLength(1)
+    expect(frameArtifacts[0]?.frameUrl).toContain('claude.ai')
+  })
+
+  it('reads the artifact ids out of both ledger types', () => {
+    const { lines } = loadFixture('wsl-artifact-records')
+    const parsed = parseSession({ sessionId: 'wsl-artifact-records', lines })
+
+    for (const kind of ['artifact-comment-monitor', 'artifact-autoreact-ledger'] as const) {
+      const ledger = parsed.records.find((r) => r.kind === kind)
+      expect(ledger?.kind === kind && ledger.artifactIds).toHaveLength(1)
+    }
   })
 })
 

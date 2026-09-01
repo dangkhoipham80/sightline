@@ -179,6 +179,18 @@ export function deriveSessionSummary(
         })
         break
 
+      // Most `frame-link` records are a bare count with no url — an artifact was updated,
+      // not published. Only the ones that name the artifact are worth listing.
+      case 'frame-link':
+        if (record.frameUrl === undefined) break
+        artifacts.push({
+          kind: 'frame-link',
+          seq: record.seq,
+          frameUrl: record.frameUrl,
+          ...(record.title !== undefined && { title: record.title }),
+        })
+        break
+
       default:
         break
     }

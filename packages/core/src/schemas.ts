@@ -163,6 +163,67 @@ export const prLinkRecordSchema = z.looseObject({
   prRepository: z.string().optional(),
 })
 
+/*
+ * The five record types below all appeared together in the WSL store, first written by
+ * `2.1.238`. None of them carries a `uuid`, so none of them was ever at risk of severing
+ * the conversation graph the way `attachment` was (trap 1) — but all 306 of them landed in
+ * `raw`, which is a slow leak of the thing we exist to prevent: work we can see but cannot
+ * describe.
+ */
+
+/**
+ * Emitted once per turn while a session is bridged to claude.ai. `atis` was the empty
+ * string in all 141 records observed, so its meaning is genuinely unknown — the schema
+ * says "a string is here", not "this is what it means".
+ */
+export const atisLatchRecordSchema = z.looseObject({
+  type: z.literal('atis-latch'),
+  atis: z.string(),
+})
+
+/**
+ * Ties a local session to its claude.ai counterpart.
+ *
+ * `ownerAccountUuid` and `ownerOrganizationUuid` are deliberately *not* surfaced. They are
+ * stable account identifiers rather than session data, they are of no use to a transcript
+ * viewer, and the moment they enter the domain model they enter the database and the
+ * export path too. Reading a field is a decision to be responsible for it.
+ */
+export const bridgeSessionRecordSchema = z.looseObject({
+  type: z.literal('bridge-session'),
+  bridgeSessionId: z.string().optional(),
+  lastSequenceNum: z.number().optional(),
+})
+
+/**
+ * A claude.ai artifact produced by the session. Only 1 of the 9 observed records carried
+ * `path` / `frameUrl` / `title`; the other 8 were the bare `artifactCount` + `timestamp`
+ * form, which is why all three are optional.
+ */
+export const frameLinkRecordSchema = z.looseObject({
+  type: z.literal('frame-link'),
+  path: z.string().optional(),
+  frameUrl: z.string().optional(),
+  title: z.string().optional(),
+  artifactCount: z.number().optional(),
+})
+
+/** Both artifact ledgers key their state by artifact id, and both carry a schema `v`. */
+const artifactLedgerShape = {
+  v: z.number().optional(),
+  artifacts: z.record(z.string(), z.unknown()).optional(),
+}
+
+export const artifactCommentMonitorRecordSchema = z.looseObject({
+  type: z.literal('artifact-comment-monitor'),
+  ...artifactLedgerShape,
+})
+
+export const artifactAutoreactLedgerRecordSchema = z.looseObject({
+  type: z.literal('artifact-autoreact-ledger'),
+  ...artifactLedgerShape,
+})
+
 /** Metadata written alongside each subagent transcript. */
 export const subagentMetaSchema = z.looseObject({
   agentType: z.string().optional(),
