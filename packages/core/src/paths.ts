@@ -111,38 +111,37 @@ export function isSameOrDescendant(parent: HostPath, child: HostPath): boolean {
   return b === a || b.startsWith(`${a}/`)
 }
 
-export interface ResumeCommandOptions {
-  hostPath: HostPath
-  sessionId: string
-  /** Defaults to `claude`. Override when the binary is installed under another name. */
-  binary?: string
-}
-
 /**
- * Build the command that resumes a session in the right place.
+ * Resolve a recorded working directory to the project that owns it.
  *
- * The whole point of the dashboard is being one keystroke from getting back to work, and
- * getting there differs per host: a WSL session can't be resumed by `cd`-ing to its UNC
- * path from Windows — it has to re-enter the distro.
+ * Live-session records and spawn requests both arrive carrying a `cwd` and nothing else,
+ * and `cwd` is per record — a session legitimately moves between subdirectories of one
+ * repo. So matching is by ancestry, not equality.
+ *
+ * **The nearest ancestor wins.** Projects nest in real corpora (`App_BlueOne_v2` contains
+ * `App_BlueOne_v2/blueone-v1`, and both are indexed separately), and attributing a
+ * session to the outer one would be quietly wrong in exactly the case where it matters.
  */
-export function resumeCommand(options: ResumeCommandOptions): string {
-  const binary = options.binary ?? 'claude'
-  const resume = `${binary} --resume ${options.sessionId}`
-  const { hostPath } = options
+export function matchHostPath(
+  candidates: readonly { id: string; path: string }[],
+  cwd: string,
+): string | undefined {
+  const target = parseHostPath(cwd)
+  let bestId: string | undefined
+  let bestLength = -1
 
-  switch (hostPath.kind) {
-    case 'wsl':
-      return `wsl -d ${hostPath.distro ?? ''} --cd ${quotePosix(hostPath.nativePath)} -- ${resume}`
-    case 'windows':
-      return `cd /d "${hostPath.nativePath}" && ${resume}`
-    case 'unix':
-      return `cd ${quotePosix(hostPath.nativePath)} && ${resume}`
+  for (const candidate of candidates) {
+    const parsed = parseHostPath(candidate.path)
+    if (!isSameOrDescendant(parsed, target)) continue
+
+    const length = normalisePathForComparison(parsed).length
+    if (length > bestLength) {
+      bestLength = length
+      bestId = candidate.id
+    }
   }
-}
 
-function quotePosix(value: string): string {
-  if (/^[A-Za-z0-9_@%+=:,./-]+$/.test(value)) return value
-  return `'${value.replace(/'/g, `'\\''`)}'`
+  return bestId
 }
 
 function splitSegments(path: string): string[] {
