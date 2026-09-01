@@ -67,7 +67,15 @@ export interface TokenUsage {
   inputTokens: number
   outputTokens: number
   cacheReadTokens: number
+  /** Total cache writes. Equals the two TTL buckets below added together. */
   cacheCreationTokens: number
+  /**
+   * Cache writes split by time-to-live. Kept separate because they are priced
+   * differently — a 1-hour write costs roughly twice what a 5-minute one does — so a
+   * meter that only has the total cannot cost it without guessing.
+   */
+  cacheCreation5mTokens: number
+  cacheCreation1hTokens: number
 }
 
 interface RecordBase {

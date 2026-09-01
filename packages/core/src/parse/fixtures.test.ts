@@ -260,6 +260,27 @@ describe('wsl-session-with-subagent', () => {
     expect(agentRecords.some((r) => r.envelope.isSidechain === true)).toBe(true)
   })
 
+  /**
+   * Subagent tokens are session tokens. `deriveSessionSummary` only ever sees the main
+   * transcript, so before `parseSession` folded the sidechains in, a session that delegated
+   * reported almost no spend — and delegating is precisely when a session spends most.
+   */
+  it('counts the sidechain’s tokens as part of the session', () => {
+    const { lines, subagents } = loadFixture('wsl-session-with-subagent')
+
+    const mainOnly = parseSession({ sessionId: 'wsl-session-with-subagent', lines })
+    const withAgent = parseSession({ sessionId: 'wsl-session-with-subagent', lines, subagents })
+
+    expect(withAgent.summary.tokenEvents.length).toBeGreaterThan(
+      mainOnly.summary.tokenEvents.length,
+    )
+    expect(withAgent.summary.usage.outputTokens).toBeGreaterThan(
+      mainOnly.summary.usage.outputTokens,
+    )
+    // Sidechain events stay attributable after the merge.
+    expect(withAgent.summary.tokenEvents.some((e) => e.agentId !== undefined)).toBe(true)
+  })
+
   it('uses Claude’s own session title rather than inventing one', () => {
     const { lines } = loadFixture('wsl-session-with-subagent')
     const parsed = parseSession({ sessionId: 'wsl-session-with-subagent', lines })

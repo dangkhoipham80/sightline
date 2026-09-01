@@ -8,6 +8,8 @@ import type {
   TranscriptRecord,
 } from '../types.js'
 import { toolUseBlocks } from './content.js'
+import type { TokenEvent } from './tokens.js'
+import { collectTokenEvents, totalUsage } from './tokens.js'
 
 export interface SessionSummary {
   /**
@@ -45,7 +47,16 @@ export interface SessionSummary {
   toolCallCount: number
 
   models: string[]
+  /**
+   * Totals over `tokenEvents`, **not** over records.
+   *
+   * For a whole session this is the union of the main transcript and every subagent —
+   * `parseSession` folds the sidechains in. Sidechain spend is real spend, and a workflow
+   * run can put more of it in the subagent files than in the transcript that spawned them.
+   */
   usage: TokenUsage
+  /** One entry per API response, already deduplicated within this session. */
+  tokenEvents: TokenEvent[]
   /** Wall-clock per turn, from `system`/`turn_duration` records. */
   turnDurationsMs: number[]
 
@@ -82,12 +93,12 @@ export function deriveSessionSummary(
   const artifacts: Artifact[] = []
   const touchesByKey = new Map<string, FileTouch>()
 
-  const usage: TokenUsage = {
-    inputTokens: 0,
-    outputTokens: 0,
-    cacheReadTokens: 0,
-    cacheCreationTokens: 0,
-  }
+  // Deliberately computed up front rather than accumulated in the loop below. Usage is a
+  // property of an API *response*, and one response is written as several `assistant`
+  // records that each repeat it — see `collectTokenEvents`. Adding it up per record
+  // over-counts by 2.4×.
+  const tokenEvents = collectTokenEvents(records)
+  const usage: TokenUsage = totalUsage(tokenEvents)
 
   let declaredSessionId: string | undefined
   let aiTitle: string | undefined
@@ -133,12 +144,6 @@ export function deriveSessionSummary(
         messageCount += 1
         assistantMessageCount += 1
         if (record.model !== undefined && !models.includes(record.model)) models.push(record.model)
-        if (record.usage !== undefined) {
-          usage.inputTokens += record.usage.inputTokens
-          usage.outputTokens += record.usage.outputTokens
-          usage.cacheReadTokens += record.usage.cacheReadTokens
-          usage.cacheCreationTokens += record.usage.cacheCreationTokens
-        }
         for (const block of toolUseBlocks(record.content)) {
           toolCallCount += 1
           const touch = readFileTouch(block.name, block.input)
@@ -225,6 +230,7 @@ export function deriveSessionSummary(
     toolCallCount,
     models,
     usage,
+    tokenEvents,
     turnDurationsMs,
     // Sorted by path then operation so the order is stable across runs — the same file
     // is routinely read *and* edited in one session, and Map insertion order would make

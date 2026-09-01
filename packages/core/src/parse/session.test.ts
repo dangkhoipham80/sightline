@@ -109,13 +109,74 @@ describe('deriveSessionSummary', () => {
       }),
     ])
 
+    // Three distinct responses, so all three count. They have no `message.id`, so each
+    // falls back to its own record uuid — which is exactly the behaviour that keeps an
+    // unidentifiable response counted once instead of dropped.
     expect(summary.usage).toEqual({
       inputTokens: 16,
       outputTokens: 16,
       cacheReadTokens: 16,
       cacheCreationTokens: 16,
+      cacheCreation5mTokens: 16,
+      cacheCreation1hTokens: 0,
     })
     expect(summary.models).toEqual(['claude-opus-5', 'claude-haiku-4-5'])
+  })
+
+  /**
+   * The bug this replaced: one API response is written as several `assistant` records —
+   * a `thinking` block and the `tool_use` that follows it are two — and every one of them
+   * repeats the same `message.usage`. Summing per record counted the same call twice.
+   * Across the real corpus that inflated the total by 2.408×.
+   */
+  it('counts one API response once, however many records it was written as', () => {
+    const summary = summarise([
+      line({
+        type: 'assistant',
+        uuid: 'a1',
+        message: {
+          id: 'msg_01',
+          model: 'claude-opus-5',
+          content: [],
+          usage: { input_tokens: 100, output_tokens: 8, cache_read_input_tokens: 900 },
+        },
+      }),
+      line({
+        type: 'assistant',
+        uuid: 'a2',
+        message: {
+          id: 'msg_01',
+          model: 'claude-opus-5',
+          content: [],
+          // Same response, still streaming: input and cache identical, output grown.
+          usage: { input_tokens: 100, output_tokens: 144, cache_read_input_tokens: 900 },
+        },
+      }),
+    ])
+
+    expect(summary.tokenEvents).toHaveLength(1)
+    expect(summary.usage.inputTokens).toBe(100)
+    expect(summary.usage.cacheReadTokens).toBe(900)
+    // The final figure, not the first and not the sum of both.
+    expect(summary.usage.outputTokens).toBe(144)
+  })
+
+  it('does not bill Claude Code’s own synthetic messages', () => {
+    const summary = summarise([
+      line({
+        type: 'assistant',
+        uuid: 'a1',
+        message: {
+          id: 'msg_01',
+          model: '<synthetic>',
+          content: [],
+          usage: { input_tokens: 999, output_tokens: 999 },
+        },
+      }),
+    ])
+
+    expect(summary.tokenEvents).toHaveLength(0)
+    expect(summary.usage.inputTokens).toBe(0)
   })
 
   it('captures queued prompts — what the user typed while Claude was still working', () => {

@@ -4,6 +4,7 @@ import type { SessionSummary } from './session.js'
 import { deriveSessionSummary } from './session.js'
 import type { ParsedSubagent, SubagentInput } from './subagents.js'
 import { parseSubagent } from './subagents.js'
+import { collectTokenEvents, totalUsage } from './tokens.js'
 import type { MessageTree } from './tree.js'
 import { buildMessageTree } from './tree.js'
 
@@ -56,6 +57,23 @@ export function parseSession(input: ParseSessionInput): ParsedSession {
   const unattachedSubagentIds = subagents
     .filter((a) => a.parentToolUseId === undefined || !toolUseIds.has(a.parentToolUseId))
     .map((a) => a.agentId)
+
+  // Subagent tokens are session tokens. `deriveSessionSummary` only sees the main
+  // transcript, so on its own it reports a session that delegated as having spent almost
+  // nothing — and delegating is exactly when a session spends most. The events are keyed by
+  // `message.id`, so merging and re-deduplicating is safe even if a response somehow
+  // appeared in both files.
+  const events = [...summary.tokenEvents]
+  const seen = new Set(events.map((e) => e.dedupeKey))
+  for (const agent of subagents) {
+    for (const event of collectTokenEvents(agent.records, { agentId: agent.agentId })) {
+      if (seen.has(event.dedupeKey)) continue
+      seen.add(event.dedupeKey)
+      events.push(event)
+    }
+  }
+  summary.tokenEvents = events
+  summary.usage = totalUsage(events)
 
   return { summary, records, tree, subagents, unattachedSubagentIds }
 }

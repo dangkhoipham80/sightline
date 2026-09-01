@@ -144,7 +144,7 @@ the same repo; group on the git root, not on `cwd` equality.
 | --- | --- | --- |
 | `aiTitle` | `ai-title` records | Session title. Free, already good, updated as the session evolves — take the **last** one. |
 | `lastPrompt` + `leafUuid` | `last-prompt` | The resume point. |
-| `message.usage` | `assistant` | `input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens` → real cost. |
+| `message.usage` | `assistant` | `input_tokens`, `output_tokens`, `cache_creation_input_tokens`, `cache_read_input_tokens` → real cost. **Usage belongs to the API response, not the record**: one response is written as several `assistant` records that each repeat it, so summing per record over-counts by 2.4×. Group by `message.id` and keep the last. See [USAGE-ACCOUNTING.md](USAGE-ACCOUNTING.md). |
 | `message.model` | `assistant` | e.g. `claude-opus-5`. Sessions can mix models. |
 | `durationMs`, `messageCount` | `system` / `turn_duration` | Per-turn wall-clock. |
 | `content` | `queue-operation` | What the user typed while waiting — often the *real* intent. |
