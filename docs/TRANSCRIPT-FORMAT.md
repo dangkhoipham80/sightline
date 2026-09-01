@@ -356,7 +356,33 @@ Two related things live nearby and are **not** transcript:
 - The `signature` on a `thinking` block is base64 protobuf, and the organization uuid is
   *inside* it. Any redaction that only inspects the encoded string will miss it.
 
-### 12. `thinking` blocks are signed and mostly empty
+### 12. `last-prompt` sometimes has no prompt
+
+✅ **verified — 17 of 6,199 records, both stores, `2.1.198` and `2.1.238`+**
+
+`last-prompt` is the resume pointer. `leafUuid` is the half `--resume` needs and was present
+on **all 6,199** records observed. `lastPrompt` — the text displayed beside it — is absent
+from 17 of them, at most one per session file:
+
+| Position of the bare record | Count | Context |
+| --- | ---: | --- |
+| First record in the file, no `user` record before it | 13 | Session boot |
+| Last record of a 6- or 7-line file | 2 | The file is a `/clear` and nothing else |
+| Last record of a long file | 2 | Session ended on something other than a prompt |
+
+So the field is optional, and a schema that requires it turns a readable resume pointer into
+a `raw` record. The **inference** — that Claude Code writes the record whenever it has a leaf
+but no prompt text to show — is consistent with all 17 but is not itself measured. The
+tidier hypothesis, *"absent exactly when `leafUuid` points outside this file"*, is **false**:
+all 17 leaf uuids resolve within their own file.
+
+There is a second-order trap here worth stating, because it is the kind that arrives disguised
+as a fix. Making the field optional *creates* a way to lose data: while `lastPrompt` was
+required, a bare record degraded to `raw` and never reached session derivation at all. Once it
+parses, a bare record arriving **last** will assign `undefined` over a prompt already read.
+Four of the 17 are the last `last-prompt` in their file. Only overwrite when the text is there.
+
+### 13. `thinking` blocks are signed and mostly empty
 
 `content[]` entries of type `thinking` carry a long `signature` and frequently an empty
 `thinking` string. Don't render the signature, don't count it toward length, and don't

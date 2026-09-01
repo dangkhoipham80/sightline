@@ -117,9 +117,18 @@ export const agentNameRecordSchema = z.looseObject({
   agentName: z.string(),
 })
 
+/**
+ * The resume pointer. `leafUuid` is the load-bearing half and was present on all 6,199
+ * records observed; `lastPrompt` is the human-readable text and is **sometimes absent** —
+ * 17 records across both stores, at most one per session file.
+ *
+ * Requiring `lastPrompt` did not make those records safe, it made them `raw`: a session
+ * whose resume pointer we could have read became a session we claimed not to understand.
+ * A missing optional field is data, not corruption.
+ */
 export const lastPromptRecordSchema = z.looseObject({
   type: z.literal('last-prompt'),
-  lastPrompt: z.string(),
+  lastPrompt: z.string().optional(),
   leafUuid: z.string().optional(),
 })
 
