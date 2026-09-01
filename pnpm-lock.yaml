@@ -35,6 +35,9 @@ importers:
       '@sightline/db':
         specifier: workspace:*
         version: link:../../packages/db
+      '@sightline/ingest':
+        specifier: workspace:*
+        version: link:../../packages/ingest
     devDependencies:
       '@types/node':
         specifier: ^22.13.0

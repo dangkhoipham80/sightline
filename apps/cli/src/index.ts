@@ -1,35 +1,81 @@
 #!/usr/bin/env node
+
 /**
  * The `sightline` binary.
  *
- * Currently one command. `serve | scan | summarize | mcp | export` are roadmap PR 9 and
- * land here alongside it; this file exists now because the usage meter needs a place for
- * `sightline statusline` and inventing a second entry point for it would be worse.
+ * `serve`, `scan` and `export` are roadmap PR 9. `summarize` and `mcp` are named in that
+ * roadmap row too, and they are *not* here — they call packages that do not exist yet.
+ * See `commands/not-yet.ts` for why they still appear in this dispatch rather than being
+ * left out entirely.
  */
 
 import { appendRateLimits, rateLimitsPath } from '@sightline/db'
+import { parseArgs } from './args.js'
+import { EXPORT_USAGE, exportCommand } from './commands/export.js'
+import { NOT_YET, notYet } from './commands/not-yet.js'
+import { SCAN_USAGE, scanCommand } from './commands/scan.js'
+import { SERVE_USAGE, serve } from './commands/serve.js'
 import { readRateLimits, renderStatusLine, settingsSnippet } from './statusline.js'
 
 const USAGE = `sightline — the memory & review layer for Claude Code
 
+  sightline serve                 run the web UI (default http://127.0.0.1:4317)
+  sightline scan                  index every ~/.claude this machine can reach
+  sightline export <session>      one session as Markdown
   sightline statusline            read a statusLine payload on stdin, capture rate limits
   sightline statusline --install  print the settings snippet to paste yourself
+
+Add --help to any command for its options.
+
+Sightline only ever reads ~/.claude. Everything it writes goes to ~/.sightline.
 `
+
+/** Options that take a value, across every command. Shared so `--index x` parses the same way. */
+const VALUED = ['port', 'host', 'index', 'out']
 
 export async function main(argv: readonly string[]): Promise<number> {
   const [command, ...rest] = argv
+  const args = parseArgs(rest, VALUED)
 
   switch (command) {
+    case 'serve':
+      return await serve(args)
+    case 'scan':
+      return scanCommand(args)
+    case 'export':
+      return exportCommand(args)
     case 'statusline':
-      return statusline(rest)
+      return await statusline(rest)
+
+    case 'summarize':
+    case 'mcp': {
+      const entry = NOT_YET.find((e) => e.command === command)
+      return entry === undefined ? 1 : notYet(entry)
+    }
+
     case undefined:
     case '--help':
     case '-h':
-      process.stdout.write(USAGE)
+    case 'help':
+      process.stdout.write(usageFor(rest[0]))
       return 0
+
     default:
       process.stderr.write(`sightline: unknown command ${JSON.stringify(command)}\n\n${USAGE}`)
       return 1
+  }
+}
+
+function usageFor(topic: string | undefined): string {
+  switch (topic) {
+    case 'serve':
+      return SERVE_USAGE
+    case 'scan':
+      return SCAN_USAGE
+    case 'export':
+      return EXPORT_USAGE
+    default:
+      return USAGE
   }
 }
 
@@ -86,7 +132,7 @@ function readStdin(): Promise<string> {
 }
 
 // `import.meta.url` check omitted deliberately: this file is only ever the bin entry point,
-// and the testable logic lives in `statusline.ts` where no process state is involved.
+// and the testable logic lives beside it in modules where no process state is involved.
 main(process.argv.slice(2))
   .then((code) => {
     process.exitCode = code

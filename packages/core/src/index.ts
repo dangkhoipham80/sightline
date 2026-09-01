@@ -88,6 +88,8 @@ export type { DiffHunk, DiffLine, DiffLineKind, DiffStat, FileDiff } from './vie
 export { diffLines } from './view/diff.js'
 export type { MessageLocation } from './view/locate.js'
 export { locateMessage } from './view/locate.js'
+export type { MarkdownExportMeta, RenderMarkdownOptions } from './view/markdown.js'
+export { renderMarkdown } from './view/markdown.js'
 export type {
   ClippedText,
   DiffView,
