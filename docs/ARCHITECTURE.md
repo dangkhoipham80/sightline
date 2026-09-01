@@ -126,8 +126,10 @@ real credentials; "remember to redact" is not a design.
 
 ## Data flow: a session ends
 
-1. `chokidar` sees `<session>.jsonl` grow — or one of its `subagents/agent-*.jsonl`
+1. `chokidar` sees `<session>.jsonl` grow — or one of its `subagents/**/agent-*.jsonl`
    sidechains, which changes the session without touching the parent file at all.
+   Workflow-spawned agents write two directories further down, so the path match is
+   depth-agnostic; a fixed depth silently stops updating any session running a workflow.
 2. The write is debounced (quiet period, with a ceiling so a long agent run still updates),
    then ingest reparses the transcript and replaces `messages`, `tool_calls`,
    `file_touches`, `artifacts` and the session aggregates in one transaction.

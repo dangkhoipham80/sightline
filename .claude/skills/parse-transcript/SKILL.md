@@ -25,8 +25,12 @@ verified against live data and that every other viewer in this space gets wrong.
    can collide with a real message `uuid` (upstream bug anthropics/claude-code#36583).
 5. **Traverse `parentUuid` defensively.** It can reference a uuid that isn't in the file
    (upstream bug anthropics/claude-code#22526). Dangling parents attach to the root.
-6. **Load the sibling subagent files.** `<session>/subagents/agent-*.jsonl` plus the
-   matching `.meta.json`. Dropping them loses most of the actual work.
+6. **Load the sibling subagent files, recursively.** `agent-*.jsonl` plus the matching
+   `.meta.json`, at any depth under `<session>/subagents/` — Workflow-spawned agents nest
+   in `workflows/wf_<id>/`, and reading only the top level loses them (177 transcripts on
+   our corpus; the session that used them most reported 8% of its real spend). Match on
+   the filename, not the directory name: that is also what excludes `journal.jsonl`, which
+   sits beside them and is not a transcript.
 7. **Preserve ordering.** Records are append-only; file order is the ground truth when
    timestamps tie or are missing.
 

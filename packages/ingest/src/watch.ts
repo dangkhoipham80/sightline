@@ -228,9 +228,12 @@ export interface WatchTarget {
 /**
  * Map a changed path back to the transcript that owns it.
  *
- * Two shapes matter, and only two:
+ * Two shapes matter:
  *   `<root>/<folderKey>/<sessionId>.jsonl`
- *   `<root>/<folderKey>/<sessionId>/subagents/agent-<id>.jsonl` (and its `.meta.json`)
+ *   `<root>/<folderKey>/<sessionId>/subagents/**\/agent-<id>.jsonl` (and its `.meta.json`)
+ *
+ * The second is deliberately depth-agnostic — Workflow-spawned agents nest one directory
+ * further down. See `MAX_SUBAGENT_DEPTH` in `discover.ts`.
  *
  * A subagent write resolves to its **parent** session, because session aggregates are a
  * function of the transcript plus its sidechains. Treating `agent-*.jsonl` as a session
@@ -251,9 +254,14 @@ export function resolveWatchTarget(root: string, changedPath: string): WatchTarg
     return { sessionId, folderKey, filePath: join(root, folderKey, name), isSubagent: false }
   }
 
-  if (parts.length === 4 && parts[2] === 'subagents') {
+  // `>= 4`, not `=== 4`: a Workflow-spawned agent writes to
+  // `<sessionId>/subagents/workflows/wf_<id>/agent-<id>.jsonl`, two segments deeper. An
+  // exact-length check ignores those writes entirely, so a session running a workflow
+  // stops updating in the live view for as long as the workflow is the only thing
+  // producing output — which, during a workflow, is the whole time.
+  if (parts.length >= 4 && parts[2] === 'subagents') {
     const sessionId = parts[1]
-    const name = parts[3]
+    const name = parts[parts.length - 1]
     if (sessionId === undefined || name === undefined) return undefined
     if (!name.startsWith('agent-')) return undefined
     if (!name.endsWith('.jsonl') && !name.endsWith('.meta.json')) return undefined

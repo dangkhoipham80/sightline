@@ -128,7 +128,10 @@ function ToolStep({
 }
 
 function SubagentThread({ subagent, density }: { subagent: SubagentView; density: Density }) {
-  const label = subagent.description ?? subagent.agentType ?? subagent.agentId
+  // Falls through to the id rather than the type: a workflow's agents all share one
+  // `agentType` and have no `description`, so labelling by type makes every thread in the
+  // session read the same. The id is the only thing that tells them apart.
+  const label = subagent.description ?? subagent.agentId
   const ran = span(subagent.startedAt, subagent.endedAt)
 
   return (
@@ -138,9 +141,7 @@ function SubagentThread({ subagent, density }: { subagent: SubagentView; density
         <span className="min-w-0 flex-1 truncate text-muted" title={label}>
           {label}
         </span>
-        {subagent.agentType !== undefined && subagent.description !== undefined && (
-          <span className="text-dim">{subagent.agentType}</span>
-        )}
+        {subagent.agentType !== undefined && <span className="text-dim">{subagent.agentType}</span>}
         <span className="text-dim">
           {count(subagent.messageCount)} msgs{ran === null ? '' : ` · ${ran}`}
         </span>

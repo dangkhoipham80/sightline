@@ -96,6 +96,8 @@ export type {
   ToolResultView,
   TranscriptView,
   TurnView,
+  UnattachedReason,
+  UnattachedSubagentView,
 } from './view/model.js'
 export { buildTranscriptView, DIFF_LINE_LIMIT, RESULT_LIMIT, TEXT_LIMIT } from './view/model.js'
 export type { EditPreview, ToolKind, ToolSummary } from './view/tools.js'

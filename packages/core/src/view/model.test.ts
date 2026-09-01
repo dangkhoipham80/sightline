@@ -1,36 +1,12 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import type { SubagentInput } from '../parse/subagents.js'
-import { agentIdFromFilename } from '../parse/subagents.js'
+import { readFixture } from '../__fixtures__/load.js'
 import type { ParsedSession } from '../parse/transcript.js'
 import { parseSession } from '../parse/transcript.js'
 import type { StepView } from './model.js'
 import { buildTranscriptView, DIFF_LINE_LIMIT, RESULT_LIMIT } from './model.js'
 
-const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '__fixtures__')
-
 function loadFixture(name: string): ParsedSession {
-  const dir = join(FIXTURES_DIR, name)
-  const lines = readFileSync(join(dir, 'transcript.jsonl'), 'utf8').split('\n')
-
-  const subagents: SubagentInput[] = []
-  const subagentDir = join(dir, 'subagents')
-  if (existsSync(subagentDir)) {
-    for (const filename of readdirSync(subagentDir)) {
-      const agentId = agentIdFromFilename(filename)
-      if (agentId === null) continue
-      const metaPath = join(subagentDir, `agent-${agentId}.meta.json`)
-      subagents.push({
-        agentId,
-        lines: readFileSync(join(subagentDir, filename), 'utf8').split('\n'),
-        ...(existsSync(metaPath) && { meta: JSON.parse(readFileSync(metaPath, 'utf8')) }),
-      })
-    }
-  }
-
-  return parseSession({ sessionId: name, lines, subagents })
+  return parseSession({ sessionId: name, ...readFixture(name) })
 }
 
 function toolSteps(steps: readonly StepView[]): Extract<StepView, { type: 'tool' }>[] {
@@ -144,6 +120,23 @@ describe('buildTranscriptView', () => {
     expect(
       view.turns.flatMap((t) => toolSteps(t.steps)).every((t) => t.subagents === undefined),
     ).toBe(true)
+    // It *had* a spawning call — the file simply does not contain it.
+    expect(view.unattachedSubagents.every((a) => a.reason === 'spawning-call-elsewhere')).toBe(true)
+  })
+
+  /**
+   * Two unrelated reasons produce an unattached subagent, and they used to share one
+   * sentence in the UI claiming the session had been resumed. A workflow agent has no
+   * `toolUseId` at all and was never attached to anything, so that explanation is not a
+   * simplification of its case — it is a wrong answer about it.
+   */
+  it('separates an agent that never had a spawning call from one whose call is elsewhere', () => {
+    const parsed = loadFixture('workflow-subagents')
+    const view = buildTranscriptView(parsed)
+
+    expect(view.unattachedSubagents).toHaveLength(3)
+    expect(view.unattachedSubagents.every((a) => a.reason === 'no-spawning-call')).toBe(true)
+    expect(view.unattachedSubagents.every((a) => a.agentType === 'workflow-subagent')).toBe(true)
   })
 
   it('renders an Edit as a diff and lists the file on its turn', () => {

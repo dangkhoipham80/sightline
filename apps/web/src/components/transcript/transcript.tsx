@@ -1,6 +1,6 @@
 'use client'
 
-import type { TranscriptView } from '@sightline/core'
+import type { TranscriptView, UnattachedReason } from '@sightline/core'
 import { useEffect, useState } from 'react'
 import { Minimap } from '@/components/transcript/minimap'
 import type { Density } from '@/components/transcript/step'
@@ -12,6 +12,34 @@ const LEVELS: Array<{ value: Density; label: string; hint: string }> = [
   { value: 'prompts', label: 'prompts', hint: 'Only what you asked for' },
   { value: 'prose', label: 'replies', hint: 'Prompts and replies, tool calls collapsed' },
   { value: 'all', label: 'everything', hint: 'Thinking, tool inputs, results and diffs' },
+]
+
+/**
+ * Subagents with nowhere to sit, grouped by *why*.
+ *
+ * These two used to share one paragraph, which said the session had been resumed. That is
+ * true of the second group and simply false of the first: a Workflow-spawned agent has no
+ * `toolUseId` at all and never had a `Task` call to be separated from. Telling a reader
+ * their session was resumed when it was not is the kind of confident wrong answer this
+ * project exists to catch.
+ */
+const UNATTACHED_GROUPS: Array<{
+  reason: UnattachedReason
+  heading: string
+  explanation: string
+}> = [
+  {
+    reason: 'no-spawning-call',
+    heading: 'Workflow agents',
+    explanation:
+      'Spawned by the Workflow tool rather than by a Task call, so there is no single step to show them under. Their tokens count towards this session all the same.',
+  },
+  {
+    reason: 'spawning-call-elsewhere',
+    heading: 'Subagents without a spawning call',
+    explanation:
+      'Their spawning call is not in this file, which usually means the session was resumed after they finished. The work is theirs all the same.',
+  },
 ]
 
 export function Transcript({ view, focusTurn }: { view: TranscriptView; focusTurn?: number }) {
@@ -86,35 +114,38 @@ export function Transcript({ view, focusTurn }: { view: TranscriptView; focusTur
           ))
         )}
 
-        {view.unattachedSubagents.length > 0 && (
-          <section className="border-t border-rule px-4 py-5 lg:px-6">
-            <h2 className="band-label">Subagents without a spawning call</h2>
-            {/*
-             * These ran, but the `Task` call that started them is in an earlier file — a
-             * session resumed after its agents finished. Showing them here is the whole
-             * difference between a viewer that loses work and one that does not.
-             */}
-            <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-muted">
-              Their spawning call is not in this file, which usually means the session was resumed
-              after they finished. The work is theirs all the same.
-            </p>
-            <div className="mt-3">
-              {view.unattachedSubagents.map((subagent) => (
-                <Step
-                  key={subagent.agentId}
-                  density={density}
-                  step={{
-                    id: subagent.agentId,
-                    type: 'tool',
-                    summary: { name: 'Agent', kind: 'task' },
-                    input: { text: '', clipped: 0 },
-                    subagents: [subagent],
-                  }}
-                />
-              ))}
-            </div>
-          </section>
-        )}
+        {UNATTACHED_GROUPS.map(({ reason, heading, explanation }) => {
+          const group = view.unattachedSubagents.filter((s) => s.reason === reason)
+          if (group.length === 0) return null
+          return (
+            <section key={reason} className="border-t border-rule px-4 py-5 lg:px-6">
+              <h2 className="band-label">{heading}</h2>
+              <p className="mt-2 max-w-2xl text-[13px] leading-relaxed text-muted">{explanation}</p>
+              <div className="mt-3">
+                {group.map((subagent) => (
+                  <Step
+                    key={subagent.agentId}
+                    density={density}
+                    step={{
+                      id: subagent.agentId,
+                      type: 'tool',
+                      summary: {
+                        name: 'Agent',
+                        kind: 'task',
+                        // Workflow agents carry no `description`, so without this every row
+                        // in a 135-agent session collapses to the identical word "Agent".
+                        target: subagent.description ?? subagent.agentId,
+                        ...(subagent.agentType !== undefined && { detail: subagent.agentType }),
+                      },
+                      input: { text: '', clipped: 0 },
+                      subagents: [subagent],
+                    }}
+                  />
+                ))}
+              </div>
+            </section>
+          )
+        })}
       </div>
 
       <aside className="hidden lg:block">

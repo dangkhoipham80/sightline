@@ -1,10 +1,6 @@
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { fixtureNames, readFixture } from '../__fixtures__/load.js'
 import { hasGraphIdentity } from '../types.js'
-import type { SubagentInput } from './subagents.js'
-import { agentIdFromFilename } from './subagents.js'
 import { parseSession } from './transcript.js'
 
 /**
@@ -20,33 +16,8 @@ import { parseSession } from './transcript.js'
  * version-tagged fixture rather than editing this one. See `.claude/skills/parse-transcript/`.
  */
 
-const FIXTURES_DIR = join(dirname(fileURLToPath(import.meta.url)), '..', '__fixtures__')
-
-function loadFixture(name: string) {
-  const dir = join(FIXTURES_DIR, name)
-  const lines = readFileSync(join(dir, 'transcript.jsonl'), 'utf8').split('\n')
-
-  const subagents: SubagentInput[] = []
-  const subagentDir = join(dir, 'subagents')
-  if (existsSync(subagentDir)) {
-    for (const filename of readdirSync(subagentDir)) {
-      const agentId = agentIdFromFilename(filename)
-      if (agentId === null) continue
-      const metaPath = join(subagentDir, `agent-${agentId}.meta.json`)
-      subagents.push({
-        agentId,
-        lines: readFileSync(join(subagentDir, filename), 'utf8').split('\n'),
-        ...(existsSync(metaPath) && { meta: JSON.parse(readFileSync(metaPath, 'utf8')) }),
-      })
-    }
-  }
-
-  return { lines, subagents }
-}
-
-const FIXTURE_NAMES = readdirSync(FIXTURES_DIR, { withFileTypes: true })
-  .filter((entry) => entry.isDirectory())
-  .map((entry) => entry.name)
+const loadFixture = readFixture
+const FIXTURE_NAMES = fixtureNames()
 
 describe('every fixture', () => {
   it('has at least one fixture to test against', () => {
@@ -286,5 +257,84 @@ describe('wsl-session-with-subagent', () => {
     const parsed = parseSession({ sessionId: 'wsl-session-with-subagent', lines })
     expect(parsed.summary.aiTitle).toBeDefined()
     expect(parsed.summary.aiTitle?.length).toBeGreaterThan(0)
+  })
+})
+
+/**
+ * Agents spawned by the Workflow tool, which nests them one directory deeper than every
+ * other sidechain. The capture keeps three workflow directories on purpose: one with two
+ * agents, one with a single agent, and one holding nothing but a journal.
+ */
+describe('workflow-subagents', () => {
+  const NAME = 'workflow-subagents'
+
+  it('finds the agents nested under workflows/wf_<id>/', () => {
+    const { lines, subagents } = loadFixture(NAME)
+    const parsed = parseSession({ sessionId: NAME, lines, subagents })
+
+    expect(parsed.subagents).toHaveLength(3)
+    expect(parsed.subagents.every((a) => a.agentType === 'workflow-subagent')).toBe(true)
+    expect(parsed.subagents.every((a) => a.messageCount > 0)).toBe(true)
+  })
+
+  /**
+   * `journal.jsonl` is the Workflow tool's own bookkeeping — `started`/`result` records
+   * with no transcript envelope (trap 11). It sits in the same directory as the agents and
+   * one of its records even carries an `agentId`, so a loader that widened its glob to
+   * `*.jsonl` to reach the nested files would silently ingest it as a fourth agent.
+   */
+  it('ignores the workflow journal sitting beside them', () => {
+    const { subagents } = loadFixture(NAME)
+    expect(subagents.map((a) => a.agentId).sort()).toEqual([
+      'a28c2f8eb69294d78',
+      'a2b84adb895396028',
+      'a76ef90fbbf1b7354',
+    ])
+  })
+
+  /**
+   * Workflow agents carry no `toolUseId` — 177 of 177 on the reference machine, against
+   * 205 of 205 `Task`-spawned agents that do. So they are unattached by construction, not
+   * because anything went wrong, and the viewer has to have somewhere to put them.
+   */
+  it('reports every workflow agent as unattached, having no spawning call', () => {
+    const { lines, subagents } = loadFixture(NAME)
+    const parsed = parseSession({ sessionId: NAME, lines, subagents })
+
+    expect(parsed.subagents.every((a) => a.parentToolUseId === undefined)).toBe(true)
+    expect(parsed.unattachedSubagentIds).toHaveLength(3)
+  })
+
+  it('counts workflow spend as session spend', () => {
+    const { lines, subagents } = loadFixture(NAME)
+
+    const mainOnly = parseSession({ sessionId: NAME, lines })
+    const withAgents = parseSession({ sessionId: NAME, lines, subagents })
+
+    expect(withAgents.summary.usage.outputTokens).toBeGreaterThan(
+      mainOnly.summary.usage.outputTokens,
+    )
+    expect(withAgents.summary.tokenEvents.filter((e) => e.agentId !== undefined).length).toBe(
+      withAgents.summary.tokenEvents.length - mainOnly.summary.tokenEvents.length,
+    )
+  })
+
+  /**
+   * One response is written as several `assistant` records that share a `message.id` and
+   * repeat the same usage. Both agents in `wf_6c8105ba-380` contain such a group, so a
+   * per-record sum would double-count them here exactly as it did across the corpus.
+   */
+  it('bills one response once even when it spans several records', () => {
+    const { lines, subagents } = loadFixture(NAME)
+    const parsed = parseSession({ sessionId: NAME, lines, subagents })
+
+    const agentRecords = parsed.subagents.flatMap((a) =>
+      a.records.filter((r) => r.kind === 'assistant'),
+    )
+    expect(agentRecords.length).toBeGreaterThan(parsed.subagents.length)
+
+    const events = parsed.summary.tokenEvents.filter((e) => e.agentId !== undefined)
+    expect(new Set(events.map((e) => e.dedupeKey)).size).toBe(events.length)
+    expect(events.length).toBeLessThan(agentRecords.length)
   })
 })
