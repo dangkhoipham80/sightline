@@ -94,15 +94,38 @@ export interface TurnView {
   subagentCount: number
 }
 
+/**
+ * Why a subagent renders on its own instead of beside the call that started it.
+ *
+ * The two causes look identical in the data and mean opposite things, so they are kept
+ * apart rather than explained with one sentence that is right about half of them.
+ */
+export type UnattachedReason =
+  /**
+   * There was never a spawning `tool_use` — the agent's `meta.json` carries no
+   * `toolUseId`. Workflow-spawned agents are all of this kind and are the only kind
+   * observed: 177 of 177 workflow agents lack the field, against 205 of 205 `Task`-spawned
+   * agents that carry it.
+   */
+  | 'no-spawning-call'
+  /**
+   * There was one, and it is not in this file. The usual cause is a session resumed after
+   * its agents finished, leaving the spawning turn in an earlier transcript.
+   */
+  | 'spawning-call-elsewhere'
+
+export interface UnattachedSubagentView extends SubagentView {
+  reason: UnattachedReason
+}
+
 export interface TranscriptView {
   sessionId: string
   turns: TurnView[]
   /**
-   * Subagents whose spawning `Task` call is not in this file — a session resumed after
-   * its agents ran leaves them stranded. Shown at the end rather than dropped: the work
-   * happened, and the alternative is a viewer that silently loses it.
+   * Subagents with no spawning call to sit beside. Shown at the end rather than dropped:
+   * the work happened, and the alternative is a viewer that silently loses it.
    */
-  unattachedSubagents: SubagentView[]
+  unattachedSubagents: UnattachedSubagentView[]
   toolCallCount: number
   malformedCount: number
 }
@@ -131,7 +154,13 @@ export function buildTranscriptView(parsed: ParsedSession): TranscriptView {
     turns,
     unattachedSubagents: parsed.subagents
       .filter((a) => unattached.has(a.agentId))
-      .map(buildSubagent),
+      .map((a) => ({
+        ...buildSubagent(a),
+        reason:
+          a.parentToolUseId === undefined
+            ? ('no-spawning-call' as const)
+            : ('spawning-call-elsewhere' as const),
+      })),
     toolCallCount: turns.reduce((sum, turn) => sum + turn.toolCallCount, 0),
     malformedCount: parsed.summary.malformed.length,
   }

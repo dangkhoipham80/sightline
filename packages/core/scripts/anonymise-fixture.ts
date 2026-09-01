@@ -214,13 +214,26 @@ function main(): void {
   const [inputPath, outputDir, ...flags] = process.argv.slice(2)
   if (inputPath === undefined || outputDir === undefined) {
     console.error(
-      'usage: anonymise-fixture.ts <transcript.jsonl> <output-dir> [--keep-text] [--lines 1-8,40] [--replace old=new ...]',
+      'usage: anonymise-fixture.ts <transcript.jsonl> <output-dir> [--keep-text] [--lines 1-8,40] [--subagent-lines 1-6] [--agents id,id] [--replace old=new ...]',
     )
     process.exit(1)
   }
   const keepText = flags.includes('--keep-text')
   const lineSpec = flags[flags.indexOf('--lines') + 1]
   const selected = flags.includes('--lines') ? parseLineSpec(lineSpec ?? '') : null
+
+  // Sidechains need their own knife. A session that ran a workflow carries a dozen agent
+  // transcripts of 100 KB each, and `--lines` only ever applied to the main file — so the
+  // only capture available was a 300 KB fixture nobody would open. Both of these select
+  // whole lines and whole files; neither rewrites one, which is the line rule 3 draws.
+  const subagentLineSpec = flags[flags.indexOf('--subagent-lines') + 1]
+  const subagentSelected = flags.includes('--subagent-lines')
+    ? parseLineSpec(subagentLineSpec ?? '')
+    : null
+  const agentSpec = flags[flags.indexOf('--agents') + 1]
+  const agentAllowlist = flags.includes('--agents')
+    ? new Set((agentSpec ?? '').split(',').map((id) => id.trim()))
+    : null
 
   // Project and company names live in paths, so they survive identity scrubbing. Pass
   // them explicitly — the fixture only needs a plausible path shape, not the real one.
@@ -266,31 +279,20 @@ function main(): void {
 
   // Subagent transcripts sit in a sibling directory named after the session. They are
   // where most of the real work is, so a fixture without them tests half the parser.
+  //
+  // Mirrored recursively, because Workflow-spawned agents live a directory deeper in
+  // `subagents/workflows/wf_<id>/`. The flat version of this loop did not merely skip them
+  // — it called `readFileSync` on the `workflows` directory and died with `EISDIR`, so any
+  // session that ever ran a workflow could not be captured as a fixture at all.
   const subagentDir = join(dirname(inputPath), basename(inputPath, '.jsonl'), 'subagents')
   let subagentCount = 0
   if (existsSync(subagentDir)) {
-    const outDir = join(outputDir, 'subagents')
-    mkdirSync(outDir, { recursive: true })
-    for (const name of readdirSync(subagentDir)) {
-      const contents = readFileSync(join(subagentDir, name), 'utf8')
-      if (name.endsWith('.jsonl')) {
-        subagentCount += 1
-        const scrubbedLines = contents
-          .split('\n')
-          .filter((line) => line.trim().length > 0)
-          .map((line) => {
-            try {
-              return JSON.stringify(scrubValue(JSON.parse(line), replacements, keepText, false))
-            } catch {
-              return line.trim()
-            }
-          })
-        writeFileSync(join(outDir, name), `${scrubbedLines.join('\n')}\n`, 'utf8')
-      } else {
-        const scrubbed = scrubValue(JSON.parse(contents), replacements, keepText, false)
-        writeFileSync(join(outDir, name), JSON.stringify(scrubbed, null, 2), 'utf8')
-      }
-    }
+    subagentCount = mirrorSubagents(subagentDir, join(outputDir, 'subagents'), {
+      replacements,
+      keepText,
+      selected: subagentSelected,
+      allowlist: agentAllowlist,
+    })
   }
 
   const breakdown = [...kinds.entries()]
@@ -312,7 +314,13 @@ Structure is byte-for-byte faithful; identities, credentials and prose are not.
         : `\n- Source lines selected: \`--lines ${lineSpec}\` of ${lines.length}`
     }
 - Prose: ${keepText ? 'kept' : 'replaced with deterministic filler'}
-- Subagent transcripts: ${subagentCount}
+- Subagent transcripts: ${subagentCount}${
+      agentAllowlist === null ? '' : `\n- Agents selected: \`--agents ${agentSpec}\``
+    }${
+      subagentSelected === null
+        ? ''
+        : `\n- Sidechain lines selected: \`--subagent-lines ${subagentLineSpec}\``
+    }
 
 | Record type | Count |
 | --- | ---: |
@@ -326,6 +334,86 @@ ${breakdown}
   )
 
   console.log(`wrote ${out.length} lines to ${outputDir}`)
+}
+
+/**
+ * Copy a `subagents/` tree through the scrubber, preserving its shape.
+ *
+ * The nesting is the point: a fixture that flattened `workflows/wf_<id>/agent-*.jsonl` up
+ * into `subagents/` would pass a loader that never learned to descend, which is the exact
+ * bug the fixture exists to pin down.
+ *
+ * `journal.jsonl` is copied like anything else — it is not a transcript, and having it
+ * present in the fixture is what lets a test assert that the loader ignores it.
+ */
+interface MirrorOptions {
+  replacements: Array<[RegExp, string]>
+  keepText: boolean
+  /** Line numbers to keep from each sidechain transcript, or null for all of them. */
+  selected: Set<number> | null
+  /** Agent ids to capture, or null for all of them. */
+  allowlist: Set<string> | null
+}
+
+function mirrorSubagents(sourceDir: string, outDir: string, options: MirrorOptions): number {
+  mkdirSync(outDir, { recursive: true })
+  let count = 0
+
+  for (const entry of readdirSync(sourceDir, { withFileTypes: true })) {
+    const from = join(sourceDir, entry.name)
+    const to = join(outDir, entry.name)
+
+    if (entry.isDirectory()) {
+      count += mirrorSubagents(from, to, options)
+      continue
+    }
+
+    const agentId = /^agent-([^.]+)\./.exec(entry.name)?.[1]
+    if (agentId !== undefined && options.allowlist !== null && !options.allowlist.has(agentId)) {
+      continue
+    }
+
+    const contents = readFileSync(from, 'utf8')
+    if (entry.name.endsWith('.jsonl')) {
+      if (agentId !== undefined) count += 1
+      const scrubbedLines = contents
+        .split('\n')
+        .map((line, index) => ({ line: line.trim(), number: index + 1 }))
+        .filter(({ line, number }) => {
+          if (line.length === 0) return false
+          if (options.selected === null) return true
+          // A journal is in the fixture solely so a test can prove the loader steps over
+          // it. One line demonstrates that as well as sixteen, and its `result` records
+          // are the largest things in the directory — 72 KB of payload for a file whose
+          // entire contribution is being ignored.
+          if (agentId === undefined) return number === 1
+          return options.selected.has(number)
+        })
+        .map(({ line }) => {
+          try {
+            return JSON.stringify(
+              scrubValue(JSON.parse(line), options.replacements, options.keepText, false),
+            )
+          } catch {
+            return line
+          }
+        })
+      writeFileSync(to, `${scrubbedLines.join('\n')}\n`, 'utf8')
+    } else {
+      // Trailing newline because `__fixtures__` does not match Biome's `!**/fixtures`
+      // exclude, so `meta.json` files here are formatted like any other source file.
+      // Without it every generated fixture fails `pnpm verify` on its first run.
+      const scrubbed = scrubValue(
+        JSON.parse(contents),
+        options.replacements,
+        options.keepText,
+        false,
+      )
+      writeFileSync(to, `${JSON.stringify(scrubbed, null, 2)}\n`, 'utf8')
+    }
+  }
+
+  return count
 }
 
 /** `"1-8,40,44-46"` → the set `{1..8, 40, 44, 45, 46}`, 1-based and inclusive. */

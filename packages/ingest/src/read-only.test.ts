@@ -133,6 +133,40 @@ function buildClaudeDirectory(): void {
     'utf8',
   )
 
+  // A workflow directory, because ingest now descends into one. Its `journal.jsonl` is
+  // read by nothing and is here precisely for that reason: a file we deliberately ignore
+  // is still a file we must not touch, and the fingerprint is what proves it.
+  const workflowDir = join(subagentDir, 'workflows', 'wf_abc123')
+  mkdirSync(workflowDir, { recursive: true })
+  writeFileSync(
+    join(workflowDir, 'agent-bbb222.jsonl'),
+    `${line({
+      type: 'assistant',
+      uuid: 's-2',
+      isSidechain: true,
+      agentId: 'bbb222',
+      cwd,
+      timestamp,
+      message: {
+        id: 'msg-2',
+        model: 'claude-opus-5',
+        content: [{ type: 'text', text: 'workflow sidechain' }],
+        usage: { input_tokens: 3, output_tokens: 11 },
+      },
+    })}\n`,
+    'utf8',
+  )
+  writeFileSync(
+    join(workflowDir, 'agent-bbb222.meta.json'),
+    line({ agentType: 'workflow-subagent', spawnDepth: 1 }),
+    'utf8',
+  )
+  writeFileSync(
+    join(workflowDir, 'journal.jsonl'),
+    `${line({ type: 'started', key: 'v2:abc', agentId: 'bbb222' })}\n`,
+    'utf8',
+  )
+
   writeFileSync(join(claudeDir, 'settings.json'), line({ cleanupPeriodDays: 30 }), 'utf8')
   writeFileSync(join(claudeDir, 'history.jsonl'), `${line({ display: 'hello' })}\n`, 'utf8')
   writeFileSync(join(claudeDir, 'file-history', 'abc', 'deadbeef@v1'), 'before the edit', 'utf8')

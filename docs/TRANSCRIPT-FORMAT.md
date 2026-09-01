@@ -162,6 +162,28 @@ Subagent work is **not** inline. Each `Task`/agent invocation writes a sibling f
 <session-uuid>/subagents/agent-<agentId>.meta.json
 ```
 
+**Agents spawned by the Workflow tool are one directory deeper**, and this is the part
+that gets missed:
+
+```
+<session-uuid>/subagents/workflows/wf_<id>/agent-<agentId>.jsonl
+<session-uuid>/subagents/workflows/wf_<id>/agent-<agentId>.meta.json
+<session-uuid>/subagents/workflows/wf_<id>/journal.jsonl      ← not a transcript
+```
+
+✅ **verified — 177 transcripts across 8 workflow directories, 3 sessions, `2.1.198`**
+
+One session held 135 of them. A reader that only lists the top level of `subagents/` sees
+none of these and reports that session as having spent 8% of what it actually spent — see
+[`USAGE-ACCOUNTING.md`](USAGE-ACCOUNTING.md). Only one level of nesting has been observed,
+but selecting on the `agent-*.jsonl` filename at any depth costs nothing and does not
+depend on `workflows/` staying the only directory name anyone ever uses.
+
+`journal.jsonl` sits in the same directory and is **not** transcript — see
+[trap 11](#11-the-type-list-grows-between-releases). Its records carry an `agentId`, so
+widening the glob to `*.jsonl` in order to reach the nested files produces a plausible
+extra "agent" rather than an obvious error.
+
 `meta.json`:
 
 ```json
@@ -177,6 +199,18 @@ Every line inside carries `isSidechain: true` and an `agentId`. `toolUseId` is t
 key back to the `tool_use` block in the parent transcript, so a subagent renders as an
 expandable sub-thread exactly where it was spawned. `spawnDepth` can exceed 1 — agents
 spawn agents.
+
+**A workflow agent's `meta.json` has no `toolUseId`**, and the split is total: 205 of 205
+`Task`-spawned agents carry the field with keys
+`{agentType, description, spawnDepth, toolUseId}`, and 177 of 177 workflow agents omit it
+with keys `{agentType, spawnDepth}` and `agentType: "workflow-subagent"`. So these agents
+have no spawning call to nest under — not because anything is missing, but because there
+never was one. A viewer needs somewhere to put them, and telling the reader their session
+was resumed (the usual cause of an unjoinable subagent) would be a wrong answer.
+
+Agent ids are 17 characters and effectively unique: across 386 agent files in both stores,
+the only repeated id belongs to two *different* sessions, which a `(session_id, agent_id)`
+key already separates.
 
 > Older descriptions of this format claim sidechain lines are interleaved into the main
 > file. That has not been true for a long time. Every line in the top-level `.jsonl` has
@@ -352,7 +386,10 @@ Two related things live nearby and are **not** transcript:
 
 - `<session>/subagents/workflows/wf_<id>/journal.jsonl` — the Workflow tool's own journal,
   with `started` / `result` records (202 in our Windows store) and no transcript envelope at
-  all. The `agent-*.jsonl` glob already excludes it. Don't widen that glob.
+  all. The `agent-*.jsonl` glob already excludes it. Don't widen that glob — the
+  `agent-*.jsonl` transcripts beside it **are** real subagent transcripts and do need
+  loading, but reach them by recursing, not by matching more filenames. See
+  [Subagents](#subagents).
 - The `signature` on a `thinking` block is base64 protobuf, and the organization uuid is
   *inside* it. Any redaction that only inspects the encoded string will miss it.
 
@@ -402,7 +439,10 @@ send it to a summariser — it is pure token waste.
    view).
 5. Build `Map<uuid, node>` over **every remaining record that has a `uuid`** — attachments
    included, per trap 1 — link children, attach orphans to root.
-6. Glob `<session>/subagents/agent-*.jsonl`, parse each the same way, join on `toolUseId`.
+6. Glob `agent-*.jsonl` **recursively** under `<session>/subagents/`, parse each the same
+   way, join on `toolUseId`. Recursively because workflow agents nest a level deeper, and
+   on the filename because that is what keeps `journal.jsonl` out. An agent with no
+   `toolUseId` is unattached by construction, not by accident.
 7. Derive session metadata: last `aiTitle`, first/last timestamp, model set, token totals,
    `file_touches` from `Edit`/`Write`/`Read` tool inputs, artifacts from `pr-link`.
 8. Resolve continuation lineage across files within the project folder.
@@ -418,6 +458,7 @@ read only the tail. If the file shrank or the prefix hash changed, reparse from 
 | --- | --- | --- |
 | `2.1.198` | Aug 2026 | Baseline for this document. Subagents in sibling files; `ai-title`, `agent-name`, `queue-operation`, `pr-link` present. Attachments participate in the uuid graph. No session-continuation mismatches and no genuinely dangling `parentUuid` observed. |
 | `2.1.198` | Sep 2026 | Second store found on the same machine (trap 10). Live session registry documented separately in `docs/LIVE-SESSIONS.md`. No transcript-format delta. |
+| `2.1.198` | Sep 2026 | Workflow-spawned subagents found nested in `subagents/workflows/wf_<id>/` — 177 transcripts that a top-level-only read had never loaded. Not a format change: the layout was always there, we were reading half of it. Their `meta.json` omits `toolUseId` entirely. Fixture: `workflow-subagents`. See [Subagents](#subagents). |
 | `2.1.238`–`2.1.241` | Sep 2026 | Read from the WSL store (binary now at `2.1.246`; no session has run under it yet, so the newest records we can attest to are `2.1.241`). **Five new record types** — `atis-latch`, `bridge-session`, `frame-link`, `artifact-comment-monitor`, `artifact-autoreact-ledger` — all tied to claude.ai bridging, none carrying a `uuid`. See [trap 11](#11-the-type-list-grows-between-releases). Fixture: `wsl-artifact-records`. `last-prompt` also appears without its `lastPrompt` field, but that is not new — it happens at `2.1.198` too. |
 
 Add a row whenever a fixture for a new version is introduced, and describe the delta.

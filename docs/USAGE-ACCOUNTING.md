@@ -54,15 +54,48 @@ Dedupe globally at **query** time instead. Worth 1.9% on this corpus.
 
 ## Subagent spend is session spend
 
-Sidechain work lives in `<session>/subagents/agent-*.jsonl`, and its tokens are as real as
-any other. 45 of 142 sessions here have subagent files. A session that delegates heavily
+Sidechain work lives under `<session>/subagents/`, and its tokens are as real as any
+other. 45 of 142 sessions here have subagent files. A session that delegates heavily
 spends *most* of its tokens there, so a total drawn from the main transcript alone reports
 near-zero for exactly the sessions that cost the most.
 
-> Known gap: workflow-spawned agents live one level deeper, at
-> `subagents/workflows/wf_<id>/agent-*.jsonl` — 135 transcripts on this machine — and the
-> ingest glob does not reach them yet. Their tokens are therefore still missing. Tracked
-> separately; the accounting above is correct for everything ingest actually loads.
+**They are not all in one directory.** `Task`-spawned agents sit directly in `subagents/`;
+agents spawned by the Workflow tool are nested a level deeper, in
+`subagents/workflows/wf_<id>/agent-*.jsonl`. A top-level-only read finds the first group
+and none of the second.
+
+Measured over both stores on the reference machine — 137 sessions, 2026-09-01, immediately
+before and after the loader learned to descend:
+
+| | flat read | recursive read | |
+| --- | ---: | ---: | ---: |
+| subagent transcripts | 206 | 386 | +180 |
+| token events | 29,074 | 33,608 | +4,534 |
+| input | 4,982,327 | 5,454,658 | +9.5% |
+| output | 23,449,637 | 26,553,339 | +13.2% |
+| cache read | 6,690,894,224 | 6,982,333,716 | +4.4% |
+| cache write | 90,124,064 | 101,112,930 | +12.2% |
+
+The corpus-wide percentages are the least interesting row here, because the error is not
+spread evenly. Only **3 of 137** sessions used a workflow at all — and in those three, the
+missing sidechains were most of the session:
+
+| Session | agents recovered | output before | after | share that was missing |
+| --- | ---: | ---: | ---: | ---: |
+| `4ef1c11d…` | 135 | 221,781 | 2,810,387 | **92.1%** |
+| `a7809caa…` | 22 | 46,365 | 310,355 | 85.1% |
+| `a760a316…` | 23 | 95,198 | 346,304 | 72.5% |
+
+A meter that reports 8% of a session's real cost is worse than one that reports nothing,
+because 221,781 is a plausible number. This is the same failure as counting per record
+rather than per response: it produces an answer, and the answer is confident.
+
+Two consequences worth keeping. The loader selects sidechains by the `agent-*.jsonl`
+filename at any depth rather than by looking for a `workflows/` directory — the filename is
+also what excludes the Workflow tool's own `journal.jsonl`, which is not a transcript. And
+because the incremental check compares only the *main* transcript's size and mtime, finding
+files that were always on disk changes nothing it looks at; reaching an existing index took
+a `SIGHTLINE_SCHEMA_VERSION` bump.
 
 ## What the correction was worth
 
@@ -79,6 +112,10 @@ Cache reads were overstated by **4.6 billion tokens**. Note the ratios understat
 per-record bug on its own, because the "new" column simultaneously *adds* subagent spend
 the old one never counted — two errors in opposite directions, which is the reason neither
 was obvious.
+
+Both columns predate the recursive sidechain read, so both are missing workflow spend. The
+table above is a like-for-like comparison of the per-response correction alone; the
+workflow delta is measured separately in the section before this one.
 
 ## Cache writes are not one price
 

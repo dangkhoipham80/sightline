@@ -134,10 +134,38 @@ describe('resolveWatchTarget', () => {
     expect(resolveWatchTarget(root, changed)?.filePath).toBe(join(root, '-repo', 'sess-1.jsonl'))
   })
 
+  /**
+   * A Workflow-spawned agent writes two directories deeper. While the check here was an
+   * exact `parts.length === 4`, those writes resolved to nothing — so a session running a
+   * workflow stopped updating in the live view for exactly as long as the workflow was the
+   * only thing producing output.
+   */
+  it('maps a workflow-nested subagent file to its parent session', () => {
+    const changed = join(
+      root,
+      '-repo',
+      'sess-1',
+      'subagents',
+      'workflows',
+      'wf_abc',
+      'agent-def.jsonl',
+    )
+    expect(resolveWatchTarget(root, changed)).toEqual({
+      sessionId: 'sess-1',
+      folderKey: '-repo',
+      filePath: join(root, '-repo', 'sess-1.jsonl'),
+      isSubagent: true,
+    })
+  })
+
   it.each([
     ['a non-transcript file', join(root, '-repo', 'notes.txt')],
     ['a stray file at the root', join(root, 'stray.jsonl')],
     ['a non-agent file in subagents', join(root, '-repo', 's', 'subagents', 'other.jsonl')],
+    [
+      'a workflow journal',
+      join(root, '-repo', 's', 'subagents', 'workflows', 'wf_abc', 'journal.jsonl'),
+    ],
     ['an unknown nesting depth', join(root, '-repo', 's', 'deeper', 'x', 'y.jsonl')],
     ['a path outside the root', join('/tmp', 'elsewhere', 'x.jsonl')],
   ])('ignores %s', (_label, changed) => {

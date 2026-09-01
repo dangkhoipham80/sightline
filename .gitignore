@@ -16,6 +16,7 @@ out/
 coverage/
 test-results/
 playwright-report/
+.playwright-mcp/
 .vitest/
 
 # local data — Sightline's own SQLite index lives outside the repo,

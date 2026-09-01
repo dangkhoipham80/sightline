@@ -368,6 +368,63 @@ describe('scan', () => {
     expect(stores).toContainEqual({ host: 'wsl', distro: 'Ubuntu-24.04' })
     expect(stores).toContainEqual({ host: 'windows' })
   })
+
+  /**
+   * End to end, through the writer, because that is where the cost of the bug was actually
+   * paid: a session that ran a workflow reported the tokens of its main transcript and
+   * nothing else. On the reference corpus the worst case was 221,781 output tokens
+   * recorded against 2,810,387 spent — a number wrong by an order of magnitude and with
+   * nothing about it to suggest so.
+   */
+  it('counts a workflow-nested subagent’s tokens towards its session', () => {
+    const repo = makeRepo('wf')
+    const filePath = writeTranscript(repo, 'session-wf', conversation(repo, 'delegated'))
+
+    const workflowDir = join(
+      filePath.slice(0, -'.jsonl'.length),
+      'subagents',
+      'workflows',
+      'wf_abc123',
+    )
+    mkdirSync(workflowDir, { recursive: true })
+    writeFileSync(
+      join(workflowDir, 'agent-bbb222.jsonl'),
+      `${line({
+        type: 'assistant',
+        uuid: 's-wf',
+        isSidechain: true,
+        agentId: 'bbb222',
+        cwd: repo,
+        timestamp: '2026-08-01T00:00:00.000Z',
+        message: {
+          id: 'msg-wf',
+          model: 'claude-opus-5',
+          content: [{ type: 'text', text: 'workflow work' }],
+          usage: { input_tokens: 100, output_tokens: 900 },
+        },
+      })}\n`,
+      'utf8',
+    )
+    writeFileSync(
+      join(workflowDir, 'agent-bbb222.meta.json'),
+      line({ agentType: 'workflow-subagent', spawnDepth: 1 }),
+      'utf8',
+    )
+    // Ignored, and its records carry an `agentId` — so a widened glob would show up here
+    // as a phantom second subagent rather than as a failure.
+    writeFileSync(
+      join(workflowDir, 'journal.jsonl'),
+      `${line({ type: 'started', key: 'v2:abc', agentId: 'bbb222' })}\n`,
+      'utf8',
+    )
+
+    expect(scan(db, { store }).ingested).toBe(1)
+
+    const session = listSessions(db)[0]
+    expect(session?.subagentCount).toBe(1)
+    // The main transcript alone accounts for 7 output tokens; the sidechain adds 900.
+    expect(session?.tokensOut).toBe(907)
+  })
 })
 
 describe('scanAll', () => {

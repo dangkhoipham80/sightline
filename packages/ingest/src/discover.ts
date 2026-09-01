@@ -174,9 +174,28 @@ export interface LoadedTranscript {
 }
 
 /**
+ * How far below `subagents/` to look for transcripts.
+ *
+ * Agents spawned by the Workflow tool do not sit beside the others — they are nested a
+ * directory deeper, under `subagents/workflows/wf_<id>/`. A top-level-only read finds none
+ * of them: 177 transcripts on the reference machine, whose tokens were therefore missing
+ * from every session total that used a workflow.
+ *
+ * This is trap 1 in a second costume. The narrow read does not fail, it under-reports, and
+ * an under-reported session looks exactly like a cheap one.
+ *
+ * Bounded rather than unbounded, and selected by the `agent-*.jsonl` filename rather than
+ * by the `workflows/` directory name. The filename is what keeps the Workflow tool's own
+ * `journal.jsonl` out — it is not a transcript and has no envelope (trap 11) — and it goes
+ * on doing that at any depth, whereas matching the directory name would go blind again the
+ * day some other spawner picks a different one.
+ */
+const MAX_SUBAGENT_DEPTH = 4
+
+/**
  * Read a transcript and its sidechain files.
  *
- * Subagent transcripts live in `<session>/subagents/`, not inline. Loading them is not
+ * Subagent transcripts live under `<session>/subagents/`, not inline. Loading them is not
  * optional — they contain most of the work in any session that delegated.
  */
 export function loadTranscript(session: Pick<DiscoveredSession, 'filePath'>): LoadedTranscript {
@@ -185,14 +204,57 @@ export function loadTranscript(session: Pick<DiscoveredSession, 'filePath'>): Lo
   const subagentDir = join(session.filePath.slice(0, -'.jsonl'.length), 'subagents')
   const subagents: SubagentInput[] = []
 
-  if (existsSync(subagentDir)) {
-    for (const name of readdirSync(subagentDir)) {
-      const agentId = agentIdFromFilename(name)
-      if (agentId === null) continue
-      const metaPath = join(subagentDir, `agent-${agentId}.meta.json`)
+  // First occurrence of an id wins, matching how duplicate uuids are handled (trap 6).
+  // `subagents` is keyed `(session_id, agent_id)` and inserted without an upsert, so a
+  // collision would abort the whole session's ingest. None exists — 382 agent files across
+  // both stores on the reference machine yield 382 distinct ids per session, and the one
+  // globally repeated id belongs to two different sessions, which the composite key already
+  // separates. The guard is here so that a future collision costs one sidechain rather than
+  // the entire session.
+  const seen = new Set<string>()
+
+  // Breadth-first over sorted names: agents that sit directly in `subagents/` are visited
+  // before any nested ones, and the order does not depend on how the filesystem enumerates.
+  const queue: Array<{ dir: string; depth: number }> = [{ dir: subagentDir, depth: 0 }]
+
+  while (queue.length > 0) {
+    const current = queue.shift()
+    if (current === undefined) break
+    if (!existsSync(current.dir)) continue
+
+    let entries: Dirent[]
+    try {
+      entries = readdirSync(current.dir, { withFileTypes: true })
+    } catch {
+      // Vanished or unreadable mid-scan. A sidechain we cannot read is work we cannot
+      // show; it is not a reason to lose the session it belongs to.
+      continue
+    }
+    entries.sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0))
+
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (current.depth < MAX_SUBAGENT_DEPTH) {
+          queue.push({ dir: join(current.dir, entry.name), depth: current.depth + 1 })
+        }
+        continue
+      }
+
+      const agentId = agentIdFromFilename(entry.name)
+      if (agentId === null || seen.has(agentId)) continue
+
+      let contents: string
+      try {
+        contents = readFileSync(join(current.dir, entry.name), 'utf8')
+      } catch {
+        continue
+      }
+      seen.add(agentId)
+
+      const metaPath = join(current.dir, `agent-${agentId}.meta.json`)
       subagents.push({
         agentId,
-        lines: readFileSync(join(subagentDir, name), 'utf8').split('\n'),
+        lines: contents.split('\n'),
         ...(existsSync(metaPath) && { meta: readJson(metaPath) }),
       })
     }
