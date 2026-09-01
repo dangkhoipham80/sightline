@@ -1,9 +1,9 @@
 import type { Dirent } from 'node:fs'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join } from 'node:path'
+import { join, posix, win32 } from 'node:path'
 import type { LaunchStore, SubagentInput } from '@sightline/core'
-import { agentIdFromFilename } from '@sightline/core'
+import { agentIdFromFilename, parseHostPath } from '@sightline/core'
 import type { SkippedDistro, WslDiscoveryOptions } from './wsl.js'
 import { discoverWslStores } from './wsl.js'
 
@@ -41,9 +41,20 @@ export function localLaunchStore(): LaunchStore {
   return process.platform === 'win32' ? { host: 'windows' } : { host: 'unix' }
 }
 
-/** The store rooted at a `~/.claude` directory. */
+/**
+ * The store rooted at a `~/.claude` directory.
+ *
+ * `projectsRoot` is composed with the separator the **root itself** uses, not the one this
+ * host happens to prefer. Plain `join` follows the host, which silently produces
+ * `\\wsl.localhost\Ubuntu-24.04\home\me\.claude/projects` for a UNC root on Linux — the
+ * same mixed-separator corruption `nativePath` in `grouping.ts` exists to prevent, and one
+ * that already reached the index once. It survives because it is still an openable path on
+ * Windows, so nothing errors; only string comparison against a properly-spelled path fails,
+ * and that is what project grouping is made of.
+ */
 export function storeAt(root: string, launch: LaunchStore = localLaunchStore()): ClaudeStore {
-  return { launch, root, projectsRoot: join(root, 'projects') }
+  const joinForRoot = parseHostPath(root).kind === 'unix' ? posix.join : win32.join
+  return { launch, root, projectsRoot: joinForRoot(root, 'projects') }
 }
 
 /** This machine's own `~/.claude`. */

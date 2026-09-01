@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { storeAt } from './discover.js'
 import type { WslResult, WslRunner } from './wsl.js'
 import { decodeWslText, discoverWslStores, distroHome, listDistros, wslStoreRoot } from './wsl.js'
 
@@ -143,6 +144,30 @@ describe('wslStoreRoot', () => {
     const root = wslStoreRoot('Ubuntu-24.04', '/home/dangkhoi04')
     expect(root).toBe('\\\\wsl.localhost\\Ubuntu-24.04\\home\\dangkhoi04\\.claude')
     expect(root.slice(2)).not.toContain('/')
+  })
+
+  /**
+   * Composing below a UNC root must follow the *root's* separator, not the host's.
+   * `path.join` follows the host, so on Linux this yielded `…\.claude/projects` — a string
+   * that is still openable on Windows, so nothing errors; it only stops comparing equal to
+   * the properly-spelled path, which is precisely what project grouping is built on.
+   * Caught by the Ubuntu CI leg, invisible on Windows.
+   */
+  it('keeps a UNC store root backslashed all the way down, on any host', () => {
+    const store = storeAt(wslStoreRoot('Ubuntu-24.04', '/home/dangkhoi04'), {
+      host: 'wsl',
+      distro: 'Ubuntu-24.04',
+    })
+    expect(store.projectsRoot).toBe(
+      '\\\\wsl.localhost\\Ubuntu-24.04\\home\\dangkhoi04\\.claude\\projects',
+    )
+    expect(store.projectsRoot.slice(2)).not.toContain('/')
+  })
+
+  it('keeps a POSIX store root slashed, likewise', () => {
+    expect(storeAt('/home/me/.claude', { host: 'unix' }).projectsRoot).toBe(
+      '/home/me/.claude/projects',
+    )
   })
 })
 
