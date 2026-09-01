@@ -84,6 +84,7 @@ export function watch(db: SightlineDatabase, options: WatchOptions = {}): Watche
     // Symlinked project directories would otherwise be walked twice, and a link pointing
     // outside the root would take the watcher with it.
     followSymlinks: false,
+    ...pollingOptionsFor(store),
   })
 
   function queue(changedPath: string): void {
@@ -186,6 +187,33 @@ export function watch(db: SightlineDatabase, options: WatchOptions = {}): Watche
       await watcher.close()
     },
   }
+}
+
+/** Polling interval for a 9P root. Slow enough to be cheap, fast enough to feel live. */
+const WSL_POLL_INTERVAL_MS = 700
+
+/**
+ * Chokidar options a store's root demands, on top of the ones every root gets.
+ *
+ * A WSL store is read from Windows over the `\\wsl.localhost` 9P share, and **native
+ * watching there does not merely miss events — it refuses to start.** Measured on the
+ * reference machine (chokidar 5, Node 22): `fs.watch` on a 9P directory throws `EISDIR`
+ * immediately — once per directory, so the real WSL store produced twelve — after which
+ * the watcher reports `ready` and sits there forever having seen nothing. `watch()` routes
+ * errors to `onError` and never throws, so the failure presents as a live view that is
+ * simply always out of date. With `usePolling` the same store produces no errors at all,
+ * and a scratch-directory trial caught 2 of 2 appends written from inside the distro.
+ *
+ * The Windows root must not pay for this: polling stats every watched file on an interval,
+ * which is exactly the cost the native backend exists to avoid. Hence a per-store decision
+ * rather than a global flag. See `docs/adr/0005-two-claude-code-data-stores.md`.
+ */
+export function pollingOptionsFor(store: ClaudeStore): {
+  usePolling?: true
+  interval?: number
+} {
+  if (store.launch.host !== 'wsl') return {}
+  return { usePolling: true, interval: WSL_POLL_INTERVAL_MS }
 }
 
 export interface WatchTarget {
