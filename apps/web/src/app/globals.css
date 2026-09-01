@@ -33,6 +33,15 @@
    */
   --spacing-bar: 3.25rem;
 
+  /*
+   * The project sidebar's width, shared for the same reason as the bar above.
+   *
+   * The sidebar is `fixed`, so it occupies no space in the flow and the content region has
+   * to reserve its width by hand. Two consumers, one value — and a third is coming, since
+   * `TerminalLayer` will be positioned against this same edge.
+   */
+  --spacing-sidebar: 15rem;
+
   --font-display: var(--font-space-grotesk), ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, monospace;
