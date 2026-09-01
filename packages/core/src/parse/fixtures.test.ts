@@ -107,6 +107,47 @@ describe('wsl-snapshot-collision', () => {
   })
 })
 
+describe('wsl-resumed-session', () => {
+  /**
+   * `last-prompt` is the resume pointer. `leafUuid` is the half `--resume` needs and was
+   * present on all 6,199 records across both stores; `lastPrompt` is the text beside it and
+   * is absent on 17 of them, at most one per session file.
+   *
+   * Requiring it did not make those records safe, it made them `raw` — a resume pointer we
+   * could have read, reported as a record we did not understand.
+   */
+  it('reads a last-prompt record that carries no lastPrompt', () => {
+    const { lines } = loadFixture('wsl-resumed-session')
+    const parsed = parseSession({ sessionId: 'wsl-resumed-session', lines })
+
+    const record = parsed.records.find((r) => r.kind === 'last-prompt')
+    expect(record?.kind).toBe('last-prompt')
+    expect(record?.kind === 'last-prompt' && record.lastPrompt).toBeUndefined()
+    expect(record?.kind === 'last-prompt' && record.leafUuid).toBeTypeOf('string')
+  })
+
+  /**
+   * The regression this guards is only reachable *because* the field became optional. While
+   * `lastPrompt` was required, a bare record degraded to `raw` and never reached the summary
+   * at all. Two sessions in the corpus end on one — a `/clear` writes the bare form as the
+   * file's last record — so passing it straight through would erase a prompt already read.
+   */
+  it('does not let a text-less last-prompt erase one already read', () => {
+    const withText = JSON.stringify({
+      type: 'last-prompt',
+      lastPrompt: 'the real prompt',
+      leafUuid: 'aaaaaaaa-0000-0000-0000-000000000001',
+    })
+    const bare = JSON.stringify({
+      type: 'last-prompt',
+      leafUuid: 'aaaaaaaa-0000-0000-0000-000000000002',
+    })
+
+    const parsed = parseSession({ sessionId: 'ends-on-a-clear', lines: [withText, bare] })
+    expect(parsed.summary.lastPrompt).toBe('the real prompt')
+  })
+})
+
 describe('wsl-artifact-records', () => {
   const NEW_AT_2_1_238 = [
     'atis-latch',

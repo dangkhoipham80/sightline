@@ -110,9 +110,13 @@ export interface AiTitleRecord extends RecordBase {
   aiTitle: string
 }
 
+/**
+ * The resume pointer. `leafUuid` is the half `--resume` actually needs; `lastPrompt` is the
+ * text shown beside it and is genuinely sometimes absent — see `lastPromptRecordSchema`.
+ */
 export interface LastPromptRecord extends RecordBase {
   kind: 'last-prompt'
-  lastPrompt: string
+  lastPrompt?: string
   leafUuid?: string
 }
 

@@ -159,8 +159,13 @@ export function deriveSessionSummary(
         aiTitle = record.aiTitle
         break
 
+      // A `last-prompt` record without `lastPrompt` omits the text; it does not assert that
+      // there was no prompt. Two sessions in our corpus end on one — a `/clear` writes the
+      // bare form as the file's last record — so assigning it straight through would erase a
+      // prompt we had already read. Note that this only became reachable when the field was
+      // made optional: while it was required, the record fell into `raw` and never got here.
       case 'last-prompt':
-        lastPrompt = record.lastPrompt
+        if (record.lastPrompt !== undefined) lastPrompt = record.lastPrompt
         break
 
       case 'queue-operation':

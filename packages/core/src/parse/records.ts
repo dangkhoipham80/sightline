@@ -160,7 +160,7 @@ function toRecord(raw: JsonObject, seq: number): TranscriptRecord {
       return {
         ...base,
         kind: 'last-prompt',
-        lastPrompt: parsed.data.lastPrompt,
+        ...(parsed.data.lastPrompt !== undefined && { lastPrompt: parsed.data.lastPrompt }),
         ...(parsed.data.leafUuid !== undefined && { leafUuid: parsed.data.leafUuid }),
       }
     }

@@ -83,7 +83,7 @@ function keystream(seed: string, length: number): Buffer {
  * above operates on the encoded form and so sails straight past it.
  *
  * We replace the whole blob rather than trying to rewrite its innards: the parser drops
- * `signature` on read (trap 12), so nothing downstream can tell the difference. Length is
+ * `signature` on read (trap 13), so nothing downstream can tell the difference. Length is
  * preserved because the one property a test might legitimately assert about a signature is
  * that it is long enough to be worth not counting.
  */
