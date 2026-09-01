@@ -56,9 +56,18 @@ The first screen has a **Read transcripts** button. It indexes `~/.claude/projec
 `~/.sightline/index.db` and nothing else — Claude Code's own files are opened read-only.
 Point the app at a scratch index instead with `SIGHTLINE_INDEX=/tmp/scratch.db pnpm dev`.
 
-So far this gives you the dashboard and project pages. Opening an individual session is the
-next piece of work; see [`docs/ROADMAP.md`](docs/ROADMAP.md) for what lands in what order,
-and [`docs/PRD.md`](docs/PRD.md) for the full product rationale.
+There is also a CLI, once the workspace is built with `pnpm build`:
+
+```bash
+node apps/cli/dist/index.js scan            # index every ~/.claude this machine can reach
+node apps/cli/dist/index.js serve --open    # the same UI, on http://127.0.0.1:4317
+node apps/cli/dist/index.js export <id>     # one session as Markdown
+```
+
+Not yet `npx sightline` — see [`docs/CLI.md`](docs/CLI.md) for what publishing still needs.
+
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for what lands in what order, and
+[`docs/PRD.md`](docs/PRD.md) for the full product rationale.
 
 ## Documentation
 
@@ -70,6 +79,7 @@ and [`docs/PRD.md`](docs/PRD.md) for the full product rationale.
 | [`docs/DATA-MODEL.md`](docs/DATA-MODEL.md) | SQLite schema and indexing strategy |
 | [`docs/AI-PIPELINE.md`](docs/AI-PIPELINE.md) | Summarization pipeline, prompts, redaction, cost |
 | [`docs/MCP.md`](docs/MCP.md) | MCP tool surface and setup |
+| [`docs/CLI.md`](docs/CLI.md) | The `sightline` binary — commands, and why `serve` spawns Next |
 | [`docs/CONTRIBUTING.md`](docs/CONTRIBUTING.md) | Branch/PR workflow and local dev |
 | [`CLAUDE.md`](CLAUDE.md) | How Claude Code should work inside this repo |
 

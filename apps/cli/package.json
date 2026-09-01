@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@sightline/core": "workspace:*",
-    "@sightline/db": "workspace:*"
+    "@sightline/db": "workspace:*",
+    "@sightline/ingest": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^22.13.0",

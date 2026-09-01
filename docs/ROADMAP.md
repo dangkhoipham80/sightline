@@ -16,8 +16,16 @@ allowed to cost a cent.
 | 6 | `feat/search` | FTS5 queries + ⌘K palette, scoped and global | ✅ |
 | 7 | `feat/ai-summaries` | `packages/ai`: provider abstraction, redaction, Tier 1 digests, Tier 2 project briefs, caching | |
 | 8 | `feat/mcp-server` | `packages/mcp` + `sightline export` | |
-| 9 | `feat/cli` | `sightline serve \| scan \| summarize \| mcp \| export`, npx packaging — `apps/cli` and `sightline statusline` already exist, landed with 16 | |
-| 10 | `docs/polish` | README, screenshots, ADRs, install guide | |
+| 9 | `feat/cli` | `sightline serve \| scan \| export` + `renderMarkdown` in `core`; `summarize` and `mcp` exit 1 naming the PR that unblocks them. See [CLI.md](CLI.md) | ✅ |
+| 10 | `docs/polish` | README, screenshots, ADRs, install guide + npx packaging | |
+
+Row 9 used to promise `serve | scan | summarize | mcp | export` **and npx packaging**, and
+shipped neither of the last three. `summarize` and `mcp` call `packages/ai` and
+`packages/mcp`, which rows 7 and 8 build and which do not exist — so the row was describing
+a PR that could not be written in this order. Both commands are wired into the dispatch and
+exit 1 naming their blocker, rather than being left out to read as typos. npx packaging
+moved to row 10: `apps/cli` depends on `workspace:*` and `serve` needs a built `apps/web`,
+so publishing is its own piece of work and is better done once the CLI is whole.
 
 ### v0.4 — the cockpit
 
@@ -33,7 +41,7 @@ independent and either can go first.
 | 14b | `feat/wsl-store-discovery` | Enumerate distros with `wsl.exe -l -q`, find each one's `$HOME`, index its store over `\\wsl.localhost\…`; polling watcher for the 9P share | ✅ |
 | 14c | `feat/scan-every-store` | `scanAll` — the Rescan button reads every discovered store, not just the local one; skipped distros surfaced instead of silently shortening the index | ✅ |
 | 15 | `feat/project-sidebar` | Persistent sidebar grouped by store, `InstrumentBar` hoisted into the layout, CONSOLE/REVIEW tabs per project | ✅ |
-| 16 | `feat/usage-meter` | `token_events` migration, 5-hour blocks, `sightline statusline` capture, pricing loader, sidebar footer | |
+| 16 | `feat/usage-meter` | `token_events` migration, 5-hour blocks, `sightline statusline` capture, pricing loader, sidebar footer | ✅ |
 | 17 | `feat/terminal-sidecar` | `packages/terminal`: `ws` server, rendezvous, origin allowlist, ticket HMAC, protocol codec. No PTY yet | |
 | 18 | `feat/session-registry` | Watch every store's `~/.claude/sessions`, live status dots | |
 | 19 | `feat/pty-supervisor` | `@lydell/node-pty` + `@xterm/headless` mirror, backpressure, orphan reaping | |
