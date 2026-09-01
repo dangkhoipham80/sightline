@@ -94,6 +94,17 @@ export function encodeProjectFolderKey(cwd: string): string {
   return cwd.replace(/[^a-zA-Z0-9]/g, '-')
 }
 
+/**
+ * The UNC spelling Windows uses to reach a path inside a WSL distro.
+ *
+ * The inverse of the `wsl` branch of `parseHostPath`, and the only sanctioned way to build
+ * one: assembling it inline is how `\\wsl.localhost\Ubuntu-24.04\home/me/code/app` — UNC
+ * prefix, POSIX tail — got into the index once already.
+ */
+export function toWslUnc(distro: string, posixPath: string): string {
+  return `\\\\wsl.localhost\\${distro}\\${trimSlashes(posixPath.replace(/\\/g, '/')).replace(/\//g, '\\')}`
+}
+
 /** Case-insensitive on Windows and WSL UNC paths, case-sensitive elsewhere. */
 export function normalisePathForComparison(path: HostPath): string {
   const collapsed = path.nativePath.replace(/\\/g, '/').replace(/\/+$/, '')

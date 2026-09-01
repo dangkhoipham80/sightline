@@ -4,6 +4,7 @@ import {
   isSameOrDescendant,
   matchHostPath,
   parseHostPath,
+  toWslUnc,
 } from './paths.js'
 
 describe('parseHostPath', () => {
@@ -157,5 +158,26 @@ describe('segments', () => {
 
   it('has no leading empty segment on POSIX paths', () => {
     expect(parseHostPath('/home/dev/app').segments).toEqual(['home', 'dev', 'app'])
+  })
+})
+
+describe('toWslUnc', () => {
+  it('round-trips through parseHostPath', () => {
+    const unc = toWslUnc('Ubuntu-24.04', '/home/dev/code/app')
+    expect(unc).toBe('\\\\wsl.localhost\\Ubuntu-24.04\\home\\dev\\code\\app')
+
+    const parsed = parseHostPath(unc)
+    expect(parsed.kind).toBe('wsl')
+    expect(parsed.distro).toBe('Ubuntu-24.04')
+    expect(parsed.nativePath).toBe('/home/dev/code/app')
+  })
+
+  /**
+   * Separators all the way through, both of them. A half-converted path —
+   * `\\wsl.localhost\Ubuntu-24.04\home/dev/code/app` — is what went into the index the
+   * last time this string was assembled inline, and it opens nothing.
+   */
+  it('leaves no POSIX separator in the tail', () => {
+    expect(toWslUnc('Ubuntu-24.04', '/home/dev/app/')).not.toContain('/')
   })
 })

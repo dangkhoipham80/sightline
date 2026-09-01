@@ -1,35 +1,30 @@
 import 'server-only'
 
-import { type LaunchStore, parseHostPath, resumeCommand } from '@sightline/core'
+import { parseHostPath, resumeCommand } from '@sightline/core'
 import type { SessionRow } from '@sightline/db'
 
 /**
- * Which `~/.claude` a session was written to.
+ * The command that reopens a session where it ran.
  *
- * **This is a placeholder that is right today and will be wrong tomorrow.** Ingest
- * currently reads exactly one store — the one under `os.homedir()` — so every indexed
- * session came from the host Sightline is running on, and deriving the store from the
- * platform is sound. PR 14 indexes every store on the machine and adds
- * `projects.store_kind`, at which point this reads the column instead.
+ * Null when there is nowhere honest to send the user: the transcript never recorded a
+ * working directory, or the row predates the store columns and we cannot say which
+ * `claude` owns the session.
  *
- * What it must *not* do is guess from the working directory. A `\\wsl.localhost\…` cwd is
- * usually the Windows binary with a UNC directory, and resuming that inside WSL runs
- * against a data directory that has never heard of the session. See ADR 0005.
+ * That second case used to be papered over by deriving the store from
+ * `process.platform` — sound only while ingest read exactly one store, and the placeholder
+ * said so. It now comes off the session row, which is the only thing that actually knows.
+ * The one answer never permitted is a guess from the working directory: a
+ * `\\wsl.localhost\…` cwd is usually the *Windows* binary, and resuming that inside WSL
+ * runs against a data directory that has never heard of the session. See ADR 0005.
  */
-function localStore(): LaunchStore {
-  return process.platform === 'win32' ? { host: 'windows' } : { host: 'unix' }
-}
-
-/**
- * The command that reopens a session where it ran, or `null` when the transcript never
- * recorded a working directory and there is nowhere honest to send the user.
- */
-export function sessionResumeCommand(session: Pick<SessionRow, 'id' | 'cwd'>): string | null {
-  if (session.cwd === null) return null
+export function sessionResumeCommand(
+  session: Pick<SessionRow, 'id' | 'cwd' | 'store'>,
+): string | null {
+  if (session.cwd === null || session.store === null) return null
 
   return resumeCommand({
     hostPath: parseHostPath(session.cwd),
-    store: localStore(),
+    store: session.store,
     sessionId: session.id,
   })
 }

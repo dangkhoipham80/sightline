@@ -60,13 +60,9 @@ function readTranscript(session: SessionRow): ReturnType<typeof parseSession> | 
   if (!existsSync(session.filePath)) return undefined
 
   try {
-    const { lines, subagents } = loadTranscript({
-      sessionId: session.id,
-      folderKey: '',
-      filePath: session.filePath,
-      fileSize: 0,
-      fileMtimeMs: 0,
-    })
+    // The path is all a read needs; everything else on a `DiscoveredSession` describes
+    // where the file was found, which the index already answered.
+    const { lines, subagents } = loadTranscript({ filePath: session.filePath })
 
     return parseSession({ sessionId: session.id, lines, subagents })
   } catch {

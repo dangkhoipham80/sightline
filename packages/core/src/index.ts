@@ -20,7 +20,7 @@ export type {
   SpawnPlanOptions,
   SpawnPlanResult,
 } from './launch.js'
-export { buildSpawnPlan, resumeCommand } from './launch.js'
+export { buildSpawnPlan, parseLaunchStore, resumeCommand } from './launch.js'
 export { flattenText, hasThinking, normaliseContent, toolUseBlocks } from './parse/content.js'
 export type { Lineage, LineageMember } from './parse/lineage.js'
 export { linkLineages } from './parse/lineage.js'
@@ -41,6 +41,7 @@ export {
   matchHostPath,
   normalisePathForComparison,
   parseHostPath,
+  toWslUnc,
 } from './paths.js'
 export { quotePosix, quotePowerShell } from './shell.js'
 export type {

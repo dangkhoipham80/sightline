@@ -2,12 +2,13 @@ import { statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import type { SightlineDatabase } from '@sightline/db'
 import { watch as chokidarWatch } from 'chokidar'
-import type { DiscoveredSession } from './discover.js'
-import { defaultProjectsRoot } from './discover.js'
+import type { ClaudeStore, DiscoveredSession } from './discover.js'
+import { localStore } from './discover.js'
 import { createIndexer } from './indexer.js'
 
 export interface WatchOptions {
-  root?: string
+  /** Which `~/.claude` to watch. Defaults to this machine's own. */
+  store?: ClaudeStore
   /**
    * Quiet period after the last write before a transcript is re-indexed.
    * Claude Code appends a line at a time; without this every keystroke reparses the file.
@@ -56,7 +57,8 @@ export interface Watcher {
  * silently, and the UI has no way to tell "nothing changed" from "I gave up".
  */
 export function watch(db: SightlineDatabase, options: WatchOptions = {}): Watcher {
-  const root = options.root ?? defaultProjectsRoot()
+  const store = options.store ?? localStore()
+  const root = store.projectsRoot
   const debounceMs = options.debounceMs ?? 400
   const maxDelayMs = options.maxDelayMs ?? 5_000
   const indexer = createIndexer(db)
@@ -132,6 +134,8 @@ export function watch(db: SightlineDatabase, options: WatchOptions = {}): Watche
       filePath,
       fileSize: stats.size,
       fileMtimeMs: Math.floor(stats.mtimeMs),
+      store: store.launch,
+      storeRoot: store.root,
     }
 
     // Guards against chokidar reporting one write twice, and against a touch that changed

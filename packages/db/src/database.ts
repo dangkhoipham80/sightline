@@ -25,7 +25,8 @@ export interface OpenOptions {
 }
 
 /**
- * Open the index, applying any outstanding migrations.
+ * Open the index, applying any outstanding migrations and re-ingesting if the derived
+ * shape changed.
  *
  * Pragmas are set deliberately:
  * - `journal_mode = WAL` so a running `sightline serve` can read while a scan writes.
@@ -67,6 +68,17 @@ export function migrate(db: SightlineDatabase): void {
       db.exec(migration.sql)
       record.run(migration.id, new Date().toISOString())
     })()
+  }
+
+  // A schema-version bump means existing rows are *wrong*, not merely incomplete: some
+  // column now means something it did not mean when they were written. DDL cannot fix
+  // that, so the rows go and the next scan rebuilds them from the JSONL — seconds, on a
+  // corpus this size. Read after migrating, so the new shape exists to be emptied.
+  //
+  // Undefined is a fresh database, which has nothing to discard.
+  const stored = getMeta(db, 'schema_version')
+  if (stored !== undefined && stored !== String(SIGHTLINE_SCHEMA_VERSION)) {
+    resetDerivedTables(db)
   }
 
   setMeta(db, 'schema_version', String(SIGHTLINE_SCHEMA_VERSION))

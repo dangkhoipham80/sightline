@@ -5,17 +5,24 @@ import { encodeProjectFolderKey } from '@sightline/core'
 import type { SightlineDatabase } from '@sightline/db'
 import { listSessions, openDatabase, search } from '@sightline/db'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { ClaudeStore } from './discover.js'
+import { storeAt } from './discover.js'
 import { scan } from './scan.js'
 import type { IndexedEvent, Watcher } from './watch.js'
 import { resolveWatchTarget, watch } from './watch.js'
 
-let root: string
+let claudeDir: string
+let store: ClaudeStore
 let workspace: string
 let db: SightlineDatabase
 let watcher: Watcher | undefined
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'sightline-watch-'))
+  claudeDir = mkdtempSync(join(tmpdir(), 'sightline-watch-'))
+  store = storeAt(claudeDir)
+  // chokidar cannot watch a directory that is not there yet, and a real `~/.claude` has
+  // `projects/` before it has a transcript in it.
+  mkdirSync(store.projectsRoot, { recursive: true })
   workspace = mkdtempSync(join(tmpdir(), 'sightline-wwork-'))
   db = openDatabase({ path: ':memory:' })
 })
@@ -23,7 +30,7 @@ beforeEach(() => {
 afterEach(async () => {
   await watcher?.close()
   watcher = undefined
-  rmSync(root, { recursive: true, force: true })
+  rmSync(claudeDir, { recursive: true, force: true })
   rmSync(workspace, { recursive: true, force: true })
 })
 
@@ -52,7 +59,7 @@ function conversation(cwd: string, text: string, timestamp = '2026-08-01T00:00:0
 }
 
 function transcriptPath(cwd: string, sessionId: string): string {
-  const dir = join(root, encodeProjectFolderKey(cwd))
+  const dir = join(store.projectsRoot, encodeProjectFolderKey(cwd))
   mkdirSync(dir, { recursive: true })
   return join(dir, `${sessionId}.jsonl`)
 }
@@ -86,7 +93,7 @@ interface Harness {
 async function startWatching(options: { debounceMs?: number; maxDelayMs?: number } = {}) {
   const harness: Harness = { events: [], errors: [] }
   watcher = watch(db, {
-    root,
+    store,
     debounceMs: options.debounceMs ?? 40,
     maxDelayMs: options.maxDelayMs ?? 5_000,
     onIndexed: (event) => harness.events.push(event),
@@ -154,7 +161,7 @@ describe('watch', () => {
     const repo = makeRepo('r')
     const filePath = transcriptPath(repo, 'session-a')
     writeRecords(filePath, conversation(repo, 'alpha'))
-    scan(db, { root })
+    scan(db, { store })
 
     const harness = await startWatching()
     appendRecords(filePath, conversation(repo, 'beta'))
@@ -172,7 +179,7 @@ describe('watch', () => {
     const repo = makeRepo('r')
     const filePath = transcriptPath(repo, 'session-a')
     writeRecords(filePath, conversation(repo, 'alpha'))
-    scan(db, { root })
+    scan(db, { store })
     expect(listSessions(db)[0]?.subagentCount).toBe(0)
 
     const harness = await startWatching()
@@ -189,7 +196,7 @@ describe('watch', () => {
     const repo = makeRepo('r')
     const filePath = transcriptPath(repo, 'session-a')
     writeRecords(filePath, conversation(repo, 'alpha'))
-    scan(db, { root })
+    scan(db, { store })
 
     const harness = await startWatching({ debounceMs: 250 })
     for (let i = 0; i < 5; i += 1) appendRecords(filePath, conversation(repo, `burst${i}`))
@@ -210,7 +217,7 @@ describe('watch', () => {
     const repo = makeRepo('r')
     const filePath = transcriptPath(repo, 'session-a')
     writeRecords(filePath, conversation(repo, 'alpha'))
-    scan(db, { root })
+    scan(db, { store })
 
     const harness = await startWatching({ debounceMs: 10_000, maxDelayMs: 100 })
     let n = 0
@@ -230,7 +237,7 @@ describe('watch', () => {
     const repo = makeRepo('r')
     const filePath = transcriptPath(repo, 'session-a')
     writeRecords(filePath, conversation(repo, 'alpha'))
-    scan(db, { root })
+    scan(db, { store })
 
     await startWatching()
     unlinkSync(filePath)

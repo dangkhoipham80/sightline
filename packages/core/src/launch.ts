@@ -27,6 +27,32 @@ import { quotePosix, quotePowerShell } from './shell.js'
  */
 export type LaunchStore = { host: 'windows' } | { host: 'wsl'; distro: string } | { host: 'unix' }
 
+/**
+ * Rebuild a `LaunchStore` from the two columns the index stores it in.
+ *
+ * Returns `undefined` rather than falling back to a plausible default. A store we cannot
+ * name is a store we cannot launch against, and inventing one is exactly the class of
+ * silent wrong-place launch this module exists to prevent — a `wsl` row with no distro
+ * would produce `wsl -d '' -- claude --resume <id>`, which does not fail usefully.
+ */
+export function parseLaunchStore(
+  kind: string | null | undefined,
+  distro: string | null | undefined,
+): LaunchStore | undefined {
+  switch (kind) {
+    case 'windows':
+      return { host: 'windows' }
+    case 'unix':
+      return { host: 'unix' }
+    case 'wsl':
+      return distro === null || distro === undefined || distro === ''
+        ? undefined
+        : { host: 'wsl', distro }
+    default:
+      return undefined
+  }
+}
+
 /** What to run once we are in the right place. */
 export type LaunchMode =
   | { kind: 'claude'; resumeSessionId?: string; extraArgs?: readonly string[] }

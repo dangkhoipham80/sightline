@@ -45,8 +45,14 @@ runs. It finds nothing. Nothing errors.
 - A new `LaunchStore` discriminator (`{host: 'windows'} | {host: 'wsl', distro} |
   {host: 'unix'}`) describes *which `~/.claude` a transcript came from*, and therefore
   which `claude` can resume it and where a terminal for it must be spawned.
-- Ingest discovers and indexes every store it can find, recording `projects.store_kind` and
-  `sessions.store_root`.
+- Ingest discovers and indexes every store it can find, recording the store on each
+  **session**: `sessions.store_kind`, `store_distro`, `store_root`.
+- A project's store is **derived** from its most recent session, not stored. An earlier
+  draft of this ADR put `store_kind` on `projects`; implementing it showed why that is
+  wrong. One project is routinely worked on from both stores — that is the
+  `App_BlueOne_v2` case above — so a column on `projects` would hold whichever session was
+  ingested last, which is not the same as the most recent one, and it would go stale
+  silently every time a session was re-ingested.
 - Anything that builds a command or spawns a process branches on `LaunchStore`, never on
   `HostPath.kind`.
 

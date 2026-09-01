@@ -5,20 +5,26 @@ import { encodeProjectFolderKey } from '@sightline/core'
 import type { SightlineDatabase } from '@sightline/db'
 import { listProjects, listSessions, openDatabase, search } from '@sightline/db'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import type { ClaudeStore } from './discover.js'
+import { storeAt } from './discover.js'
 import { scan } from './scan.js'
 
-let root: string
+let claudeDir: string
+let store: ClaudeStore
 let workspace: string
 let db: SightlineDatabase
 
 beforeEach(() => {
-  root = mkdtempSync(join(tmpdir(), 'sightline-scan-'))
+  // Shaped like a real store — transcripts under `<root>/projects` — because that is the
+  // relationship `storeAt` encodes and the one the scanner now walks.
+  claudeDir = mkdtempSync(join(tmpdir(), 'sightline-scan-'))
+  store = storeAt(claudeDir)
   workspace = mkdtempSync(join(tmpdir(), 'sightline-work-'))
   db = openDatabase({ path: ':memory:' })
 })
 
 afterEach(() => {
-  rmSync(root, { recursive: true, force: true })
+  rmSync(claudeDir, { recursive: true, force: true })
   rmSync(workspace, { recursive: true, force: true })
 })
 
@@ -32,10 +38,18 @@ function makeRepo(name: string, subdirs: string[] = []): string {
 
 const line = (value: unknown): string => JSON.stringify(value)
 
-/** Write a transcript into the fake projects root exactly as Claude Code lays it out. */
+/** Write a transcript into the fake store exactly as Claude Code lays it out. */
 function writeTranscript(cwd: string, sessionId: string, records: unknown[]): string {
-  const folderKey = encodeProjectFolderKey(cwd)
-  const dir = join(root, folderKey)
+  return writeTranscriptInto(claudeDir, cwd, sessionId, records)
+}
+
+function writeTranscriptInto(
+  storeRoot: string,
+  cwd: string,
+  sessionId: string,
+  records: unknown[],
+): string {
+  const dir = join(storeRoot, 'projects', encodeProjectFolderKey(cwd))
   mkdirSync(dir, { recursive: true })
   const filePath = join(dir, `${sessionId}.jsonl`)
   writeFileSync(filePath, `${records.map(line).join('\n')}\n`, 'utf8')
@@ -66,7 +80,7 @@ describe('scan', () => {
   it('indexes discovered transcripts', () => {
     writeTranscript(makeRepo('r'), 'session-a', conversation(makeRepo('r'), 'alpha'))
 
-    const result = scan(db, { root })
+    const result = scan(db, { store })
 
     expect(result.discovered).toBe(1)
     expect(result.ingested).toBe(1)
@@ -91,7 +105,7 @@ describe('scan', () => {
     )
     writeTranscript(join(repo, 'api'), 'session-api', conversation(join(repo, 'api'), 'api'))
 
-    const result = scan(db, { root })
+    const result = scan(db, { store })
 
     const projects = listProjects(db)
     expect(projects).toHaveLength(1)
@@ -108,7 +122,7 @@ describe('scan', () => {
     writeTranscript(one, 'session-1', conversation(one, 'one'))
     writeTranscript(two, 'session-2', conversation(two, 'two'))
 
-    scan(db, { root })
+    scan(db, { store })
     expect(listProjects(db)).toHaveLength(2)
   })
 
@@ -118,7 +132,7 @@ describe('scan', () => {
     writeTranscript(repo, 'session-1', conversation(repo, 'one'))
     writeTranscript(repo2, 'session-2', conversation(repo2, 'two'))
 
-    scan(db, { root })
+    scan(db, { store })
     expect(listProjects(db)).toHaveLength(2)
   })
 
@@ -137,7 +151,7 @@ describe('scan', () => {
       { type: 'user', uuid: 'u2', cwd: repo, message: { content: 'work happens here' } },
     ])
 
-    scan(db, { root })
+    scan(db, { store })
 
     const projects = listProjects(db)
     expect(projects).toHaveLength(1)
@@ -153,7 +167,7 @@ describe('scan', () => {
     )
     writeTranscript(repo, 'session-1', conversation(repo, 'one'))
 
-    scan(db, { root })
+    scan(db, { store })
     expect(listProjects(db)[0]?.repoUrl).toBe('https://github.com/acme/app.git')
   })
 
@@ -182,7 +196,7 @@ describe('scan', () => {
     )
     writeTranscript(repo, 'session-1', conversation(repo, 'one'))
 
-    scan(db, { root })
+    scan(db, { store })
     expect(listProjects(db)[0]?.repoUrl).toBe('https://github.com/acme/app.git')
   })
 
@@ -201,7 +215,7 @@ describe('scan', () => {
     )
     writeTranscript(repo, 'session-1', conversation(repo, 'one'))
 
-    scan(db, { root })
+    scan(db, { store })
     expect(listProjects(db)[0]?.repoUrl).toBe('https://github.com/acme/app.git')
   })
 
@@ -215,7 +229,7 @@ describe('scan', () => {
     writeTranscript('/deleted-repo', 'session-1', conversation('/deleted-repo', 'one'))
     writeTranscript('/deleted-repo/sub', 'session-2', conversation('/deleted-repo/sub', 'two'))
 
-    scan(db, { root })
+    scan(db, { store })
 
     const projects = listProjects(db)
     expect(projects).toHaveLength(2)
@@ -225,8 +239,8 @@ describe('scan', () => {
   it('skips transcripts whose size and mtime are unchanged', () => {
     writeTranscript(makeRepo('r'), 'session-a', conversation(makeRepo('r'), 'alpha'))
 
-    expect(scan(db, { root })).toMatchObject({ ingested: 1, skipped: 0 })
-    expect(scan(db, { root })).toMatchObject({ ingested: 0, skipped: 1 })
+    expect(scan(db, { store })).toMatchObject({ ingested: 1, skipped: 0 })
+    expect(scan(db, { store })).toMatchObject({ ingested: 0, skipped: 1 })
   })
 
   it('re-reads a transcript that grew', () => {
@@ -235,7 +249,7 @@ describe('scan', () => {
       'session-a',
       conversation(makeRepo('r'), 'alpha'),
     )
-    scan(db, { root })
+    scan(db, { store })
 
     writeFileSync(
       filePath,
@@ -245,14 +259,14 @@ describe('scan', () => {
       'utf8',
     )
 
-    expect(scan(db, { root })).toMatchObject({ ingested: 1, skipped: 0 })
+    expect(scan(db, { store })).toMatchObject({ ingested: 1, skipped: 0 })
     expect(search(db, 'beta')).toHaveLength(1)
   })
 
   it('re-reads everything when forced, even if nothing changed', () => {
     writeTranscript(makeRepo('r'), 'session-a', conversation(makeRepo('r'), 'alpha'))
-    scan(db, { root })
-    expect(scan(db, { root, force: true })).toMatchObject({ ingested: 1, skipped: 0 })
+    scan(db, { store })
+    expect(scan(db, { store, force: true })).toMatchObject({ ingested: 1, skipped: 0 })
   })
 
   /**
@@ -263,20 +277,20 @@ describe('scan', () => {
    */
   it('cannot detect a same-size, same-mtime rewrite without --force', () => {
     const filePath = writeTranscript('/repo', 'session-a', conversation('/repo', 'aaaaa'))
-    scan(db, { root })
+    scan(db, { store })
 
     const stamp = new Date('2026-08-01T00:00:00.000Z')
     writeFileSync(filePath, `${conversation('/repo', 'bbbbb').map(line).join('\n')}\n`, 'utf8')
     utimesSync(filePath, stamp, stamp)
     // Align mtime with what was stored so the signature genuinely matches.
-    scan(db, { root })
+    scan(db, { store })
     const stored = db.prepare('SELECT file_mtime_ms FROM sessions').get() as {
       file_mtime_ms: number
     }
     utimesSync(filePath, stamp, new Date(stored.file_mtime_ms))
 
-    expect(scan(db, { root })).toMatchObject({ skipped: 1 })
-    expect(scan(db, { root, force: true })).toMatchObject({ ingested: 1 })
+    expect(scan(db, { store })).toMatchObject({ skipped: 1 })
+    expect(scan(db, { store, force: true })).toMatchObject({ ingested: 1 })
     expect(search(db, 'bbbbb')).toHaveLength(1)
   })
 
@@ -284,13 +298,13 @@ describe('scan', () => {
     // `App_v2` and `App-v2` encode to the same folder key; the records disambiguate.
     writeTranscript('/code/App_v2', 'session-a', conversation('/code/App_v2', 'alpha'))
 
-    scan(db, { root })
+    scan(db, { store })
     expect(listProjects(db)[0]?.realCwd).toBe('/code/App_v2')
   })
 
   it('aggregates token usage and tool calls onto the session', () => {
     writeTranscript(makeRepo('r'), 'session-a', conversation(makeRepo('r'), 'alpha'))
-    scan(db, { root })
+    scan(db, { store })
 
     const session = listSessions(db)[0]
     expect(session?.tokensIn).toBe(5)
@@ -299,7 +313,59 @@ describe('scan', () => {
     expect(session?.models).toEqual(['claude-opus-5'])
   })
 
-  it('reports an empty result for a root that does not exist', () => {
-    expect(scan(db, { root: join(root, 'nope') })).toMatchObject({ discovered: 0, ingested: 0 })
+  it('reports an empty result for a store that does not exist', () => {
+    expect(scan(db, { store: storeAt(join(claudeDir, 'nope')) })).toMatchObject({
+      discovered: 0,
+      ingested: 0,
+    })
+  })
+
+  /**
+   * The store travels with the *session*, not with the path. Both halves of this test are
+   * load-bearing: `store_kind` must say `windows` even though `host_kind` says `wsl`,
+   * because that combination — the Windows binary run with a UNC working directory — is
+   * four of seventeen projects on the reference machine, and it is the combination that
+   * used to emit a `wsl -d …` resume command against a store with no such session.
+   */
+  it('records the store a session came from, not the shape of its path', () => {
+    const unc = '\\\\wsl.localhost\\Ubuntu-24.04\\home\\me\\code\\app'
+    writeTranscript(unc, 'session-unc', conversation(unc, 'alpha'))
+
+    scan(db, { store: storeAt(claudeDir, { host: 'windows' }) })
+
+    const session = listSessions(db)[0]
+    expect(session?.store).toEqual({ host: 'windows' })
+    expect(session?.storeRoot).toBe(claudeDir)
+    // The path is still described as what it is. The two fields answer different
+    // questions and are allowed to disagree — that disagreement is the whole point.
+    expect(listProjects(db)[0]?.hostKind).toBe('wsl')
+    expect(listProjects(db)[0]?.store).toEqual({ host: 'windows' })
+  })
+
+  /**
+   * The reunion, end to end: `App_BlueOne_v2` worked on from inside the distro *and* from
+   * Windows over the share. Two stores, two spellings of one directory, one project.
+   */
+  it('folds a project worked on from two stores into one', () => {
+    const posix = '/home/me/code/app'
+    const unc = '\\\\wsl.localhost\\Ubuntu-24.04\\home\\me\\code\\app'
+
+    // Genuinely two stores, two directories — the distro's `~/.claude` and Windows'.
+    const wslDir = mkdtempSync(join(tmpdir(), 'sightline-wsl-store-'))
+    writeTranscriptInto(wslDir, posix, 'session-inside', conversation(posix, 'inside'))
+    scan(db, { store: storeAt(wslDir, { host: 'wsl', distro: 'Ubuntu-24.04' }) })
+
+    writeTranscript(unc, 'session-outside', conversation(unc, 'outside'))
+    scan(db, { store: storeAt(claudeDir, { host: 'windows' }) })
+    rmSync(wslDir, { recursive: true, force: true })
+
+    const projects = listProjects(db)
+    expect(projects).toHaveLength(1)
+    expect(projects[0]?.sessionCount).toBe(2)
+
+    // …and each session still knows which `claude` can reopen it.
+    const stores = listSessions(db).map((s) => s.store)
+    expect(stores).toContainEqual({ host: 'wsl', distro: 'Ubuntu-24.04' })
+    expect(stores).toContainEqual({ host: 'windows' })
   })
 })

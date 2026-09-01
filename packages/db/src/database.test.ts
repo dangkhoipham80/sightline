@@ -1,7 +1,8 @@
-import { parseSession } from '@sightline/core'
+import type { LaunchStore } from '@sightline/core'
+import { parseSession, SIGHTLINE_SCHEMA_VERSION } from '@sightline/core'
 import { beforeEach, describe, expect, it } from 'vitest'
 import type { SightlineDatabase } from './database.js'
-import { getMeta, openDatabase, resetDerivedTables } from './database.js'
+import { getMeta, migrate, openDatabase, resetDerivedTables, setMeta } from './database.js'
 import {
   countSearchResults,
   findSessionsByTitle,
@@ -35,9 +36,12 @@ function seedSession(
   sessionId: string,
   lines: string[],
   signature = { fileSize: 100, fileMtimeMs: 1000 },
+  store: LaunchStore = { host: 'unix' },
 ): void {
   writeSession(db, {
     projectId,
+    store,
+    storeRoot: '/home/me/.claude',
     filePath: `/tmp/${sessionId}.jsonl`,
     fileSize: signature.fileSize,
     fileMtimeMs: signature.fileMtimeMs,
@@ -60,7 +64,44 @@ describe('migrations', () => {
   })
 
   it('records the schema version', () => {
-    expect(getMeta(db, 'schema_version')).toBe('1')
+    expect(getMeta(db, 'schema_version')).toBe(String(SIGHTLINE_SCHEMA_VERSION))
+  })
+
+  /**
+   * The bump-and-re-ingest escape hatch, wired rather than merely documented.
+   * `SIGHTLINE_SCHEMA_VERSION` had been written into `meta` since the first migration and
+   * never read back, so bumping it did nothing at all — rows computed under the old
+   * meaning would have survived, and nothing would have said so.
+   *
+   * Simulated by writing an older version into `meta`, because the constant cannot change
+   * inside a test and asserting against a hardcoded number would just pin today's value.
+   */
+  it('discards derived rows when the stored schema version is stale', () => {
+    const projectId = seedProject(db)
+    seedSession(db, projectId, 's1', [
+      line({ type: 'user', uuid: 'u1', message: { content: 'searchable' } }),
+    ])
+
+    setMeta(db, 'schema_version', String(SIGHTLINE_SCHEMA_VERSION - 1))
+    migrate(db)
+
+    expect(listProjects(db)).toHaveLength(0)
+    expect(listSessions(db)).toHaveLength(0)
+    // Cleared, not merely hidden: a stale posting would resurrect the row in search.
+    expect(search(db, 'searchable')).toHaveLength(0)
+    expect(getMeta(db, 'schema_version')).toBe(String(SIGHTLINE_SCHEMA_VERSION))
+  })
+
+  it('keeps derived rows when the stored schema version already matches', () => {
+    const projectId = seedProject(db)
+    seedSession(db, projectId, 's1', [
+      line({ type: 'user', uuid: 'u1', message: { content: 'searchable' } }),
+    ])
+
+    migrate(db)
+
+    expect(listSessions(db)).toHaveLength(1)
+    expect(search(db, 'searchable')).toHaveLength(1)
   })
 
   it('enables foreign keys so deleting a session removes its rows', () => {
@@ -231,6 +272,83 @@ describe('getSession', () => {
 
   it('returns undefined for an id it has never seen, rather than throwing', () => {
     expect(getSession(db, 'nope')).toBeUndefined()
+  })
+})
+
+/**
+ * Which `~/.claude` holds a session decides which `claude` can reopen it, so it is stored
+ * per session and read back as the discriminated union the launch code branches on — never
+ * re-derived from the working directory. See ADR 0005.
+ */
+describe('the store a session came from', () => {
+  it('round-trips a distro store, distro name included', () => {
+    const projectId = seedProject(db)
+    seedSession(
+      db,
+      projectId,
+      's1',
+      [],
+      { fileSize: 1, fileMtimeMs: 1 },
+      {
+        host: 'wsl',
+        distro: 'Ubuntu-24.04',
+      },
+    )
+
+    expect(getSession(db, 's1')?.store).toEqual({ host: 'wsl', distro: 'Ubuntu-24.04' })
+    expect(getSession(db, 's1')?.storeRoot).toBe('/home/me/.claude')
+  })
+
+  it('reads as null for a row written before the store was recorded', () => {
+    const projectId = seedProject(db)
+    seedSession(db, projectId, 's1', [])
+    db.prepare('UPDATE sessions SET store_kind = NULL, store_distro = NULL').run()
+
+    // Null, not a plausible default. The resume command is then withheld rather than
+    // pointed at whichever store this machine happens to be.
+    expect(getSession(db, 's1')?.store).toBeNull()
+  })
+
+  /**
+   * A `wsl` store with no distro cannot be launched against — `wsl -d '' -- claude` is not
+   * a command that fails usefully — so it reads as unknown rather than as a store.
+   */
+  it('rejects a distro store with no distro', () => {
+    const projectId = seedProject(db)
+    seedSession(db, projectId, 's1', [])
+    db.prepare("UPDATE sessions SET store_kind = 'wsl', store_distro = NULL").run()
+
+    expect(getSession(db, 's1')?.store).toBeNull()
+  })
+
+  /**
+   * Derived at query time, deliberately. A project is routinely worked on from both
+   * stores; a column on `projects` would hold whichever session was ingested last, which
+   * is not the same thing as the most recent one and would go stale silently.
+   */
+  it('gives a project the store of its most recent session', () => {
+    const projectId = seedProject(db)
+    const stamped = (uuid: string, timestamp: string) => [
+      line({ type: 'user', uuid, timestamp, message: { content: 'x' } }),
+    ]
+
+    seedSession(db, projectId, 'older', stamped('u1', '2026-08-01T00:00:00.000Z'), undefined, {
+      host: 'wsl',
+      distro: 'Ubuntu-24.04',
+    })
+    seedSession(db, projectId, 'newer', stamped('u2', '2026-08-09T00:00:00.000Z'), undefined, {
+      host: 'windows',
+    })
+
+    expect(listProjects(db)[0]?.store).toEqual({ host: 'windows' })
+
+    // And it follows the data rather than the insertion order: re-ingesting the older
+    // session must not hand the project its store back.
+    seedSession(db, projectId, 'older', stamped('u1', '2026-08-01T00:00:00.000Z'), undefined, {
+      host: 'wsl',
+      distro: 'Ubuntu-24.04',
+    })
+    expect(listProjects(db)[0]?.store).toEqual({ host: 'windows' })
   })
 })
 
