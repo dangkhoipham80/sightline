@@ -4,6 +4,8 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import type { LaunchStore, SubagentInput } from '@sightline/core'
 import { agentIdFromFilename } from '@sightline/core'
+import type { SkippedDistro, WslDiscoveryOptions } from './wsl.js'
+import { discoverWslStores } from './wsl.js'
 
 /**
  * One `~/.claude` on this machine.
@@ -44,9 +46,28 @@ export function storeAt(root: string, launch: LaunchStore = localLaunchStore()):
   return { launch, root, projectsRoot: join(root, 'projects') }
 }
 
-/** This machine's own `~/.claude`. The only store PR 14a indexes. */
+/** This machine's own `~/.claude`. */
 export function localStore(): ClaudeStore {
   return storeAt(join(homedir(), '.claude'))
+}
+
+export interface StoreDiscovery {
+  stores: ClaudeStore[]
+  /** Distros that exist but contributed nothing, and why. Never silently dropped. */
+  skipped: SkippedDistro[]
+}
+
+/**
+ * Every `~/.claude` this machine can reach.
+ *
+ * The local store always comes first — it is the one that certainly exists and needs no
+ * subprocess to find. WSL stores follow, and only for distros that were already running:
+ * see `discoverWslStores` for why booting one to read it is not an acceptable side effect
+ * of a scan.
+ */
+export function discoverStores(options: WslDiscoveryOptions = {}): StoreDiscovery {
+  const wsl = discoverWslStores(options)
+  return { stores: [localStore(), ...wsl.stores], skipped: wsl.skipped }
 }
 
 export interface DiscoveredSession {

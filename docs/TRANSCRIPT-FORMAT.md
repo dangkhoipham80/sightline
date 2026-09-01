@@ -310,7 +310,12 @@ runs successfully against a store containing no such session, and reports nothin
 
 One project can legitimately appear in both stores — `App_BlueOne_v2` does here — so
 indexing one of them shows half a history with no indication the other half exists.
-See [ADR 0005](adr/0005-two-claude-code-data-stores.md).
+Indexing both reunites it: 13 projects rather than 15, with `blueone-v1` holding 22
+sessions drawn from both stores.
+
+Finding the second store is its own small minefield — `wsl.exe` speaks UTF-16LE, its error
+messages arrive on *stdout* in a different encoding than the command output, and reading a
+distro at all wakes it up. See [ADR 0005](adr/0005-two-claude-code-data-stores.md).
 
 ### 11. `thinking` blocks are signed and mostly empty
 

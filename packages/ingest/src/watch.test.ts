@@ -9,7 +9,7 @@ import type { ClaudeStore } from './discover.js'
 import { storeAt } from './discover.js'
 import { scan } from './scan.js'
 import type { IndexedEvent, Watcher } from './watch.js'
-import { resolveWatchTarget, watch } from './watch.js'
+import { pollingOptionsFor, resolveWatchTarget, watch } from './watch.js'
 
 let claudeDir: string
 let store: ClaudeStore
@@ -277,5 +277,30 @@ describe('watch', () => {
     expect(event.malformedLines).toBe(1)
     expect(search(db, 'alpha')).toHaveLength(1)
     expect(harness.errors).toEqual([])
+  })
+})
+
+/**
+ * Verified on the reference machine (chokidar 5, Node 22, Windows 11): watching
+ * `\wsl.localhost\Ubuntu-24.04\…` natively throws `EISDIR` twice and then reports zero
+ * events for appends made inside the distro; the identical trial with `usePolling` caught
+ * 2 of 2. Because `watch()` swallows watcher errors into `onError`, getting this wrong
+ * looks exactly like a quiet session, so the choice is asserted rather than assumed.
+ */
+describe('pollingOptionsFor', () => {
+  it('polls a WSL store, which cannot be watched natively over 9P', () => {
+    expect(
+      pollingOptionsFor(
+        storeAt('\\wsl.localhostUbuntu-24.04homeme.claude', {
+          host: 'wsl',
+          distro: 'Ubuntu-24.04',
+        }),
+      ),
+    ).toEqual({ usePolling: true, interval: expect.any(Number) })
+  })
+
+  it('leaves a local store on native events, which must not pay the polling cost', () => {
+    expect(pollingOptionsFor(storeAt('C:Usersme.claude', { host: 'windows' }))).toEqual({})
+    expect(pollingOptionsFor(storeAt('/home/me/.claude', { host: 'unix' }))).toEqual({})
   })
 })
