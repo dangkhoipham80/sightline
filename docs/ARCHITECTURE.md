@@ -3,7 +3,9 @@
 ## Shape
 
 ```
-                    ~/.claude/projects/**/*.jsonl        (read-only, source of truth)
+              every ~/.claude on the machine — Windows and each WSL distro
+                    projects/**/*.jsonl · sessions/<pid>.json
+                              (read-only, source of truth)
                               │
                     ┌─────────▼─────────┐
                     │  packages/core    │  parse · normalise paths · link lineage
@@ -27,11 +29,23 @@
                                             ┌─────────▼──────┐ ┌────────▼────────┐
                                             │   apps/web     │ │  packages/mcp   │
                                             │   (humans)     │ │   (agents)      │
-                                            └────────────────┘ └─────────────────┘
+                                            └───────┬────────┘ └─────────────────┘
+                                                    │ ws://127.0.0.1
+                                            ┌───────▼──────────────┐
+                                            │ packages/terminal    │  separate process
+                                            │ PTY per project      │  spawns `claude`
+                                            │ headless mirror      │  watches sessions/
+                                            └──────────────────────┘
 ```
 
 Two readers, one index. That symmetry is the whole design: anything the UI can render,
 the MCP server can answer, because both read the same tables.
+
+`packages/terminal` is the one arrow that points *out* — it starts processes rather than
+reading files. It is a separate OS process for a reason given in
+[ADR 0003](adr/0003-a-pty-sidecar-over-a-next-custom-server.md), and it still writes
+nothing to `~/.claude`: the `claude` it spawns writes its own transcripts, which ingest
+then picks up like any other.
 
 ## Packages
 
@@ -42,6 +56,7 @@ the MCP server can answer, because both read the same tables.
 | `@sightline/ingest` | Directory scanning, chokidar watching, incremental indexing | `core`, `db` |
 | `@sightline/ai` | Provider abstraction, redaction, prompt pipeline, caching | `core`, `db` |
 | `@sightline/mcp` | MCP server over the index | `core`, `db` |
+| `@sightline/terminal` | PTY supervisor, WebSocket server, live-session watcher | `core`, `db` |
 | `apps/web` | Next.js UI | all packages |
 | `apps/cli` | `sightline` binary | all packages |
 
@@ -64,6 +79,15 @@ recall proves insufficient, embeddings go in as an additive column, not a rewrit
 Everything except `summaries`, `notes`, and user-edited `decisions` / `open_threads` can
 be rebuilt from disk. Migrations get to be pragmatic: when one would be gnarly, bump
 `SIGHTLINE_SCHEMA_VERSION` and re-ingest. See `.claude/skills/add-migration/`.
+
+### The store is not the path
+
+`HostPath.kind` describes the shape of a working directory. **Which `~/.claude` a session
+was written to** is a separate fact, and it is the one that decides which `claude` binary
+can resume it and where a terminal must be spawned. They agree in the common case, which is
+exactly why conflating them survived review once already. See
+[ADR 0005](adr/0005-two-claude-code-data-stores.md) and trap 10 in
+`docs/TRANSCRIPT-FORMAT.md`.
 
 ### Group projects by real git root, not folder key
 
@@ -117,7 +141,13 @@ real credentials; "remember to redact" is not a design.
 
 ## What is deliberately absent
 
-- **No server process required.** `sightline serve` is a local Next.js server; the CLI and
-  MCP server talk to the same SQLite file directly.
-- **No background daemon by default.** Watching is opt-in per invocation.
+- **No server process required to read.** `sightline serve` is a local Next.js server; the
+  CLI and MCP server talk to the same SQLite file directly. The terminal sidecar is
+  required only to *run* a terminal — without it the console tab says so and everything
+  else works.
+- **No background daemon by default.** Watching is opt-in per invocation, and the sidecar
+  starts with `pnpm dev` / `sightline serve` rather than at login.
 - **No network calls** except to the configured AI provider — and none at all in v0.1.
+  The terminal is a local socket; it never leaves the loopback interface.
+- **No writes to `~/.claude`, still.** Spawning `claude` in a PTY is not a write path: the
+  child writes its own data directory, exactly as it does from any other terminal.
