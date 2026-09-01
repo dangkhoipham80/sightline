@@ -1,10 +1,15 @@
 import {
   agentNameRecordSchema,
   aiTitleRecordSchema,
+  artifactAutoreactLedgerRecordSchema,
+  artifactCommentMonitorRecordSchema,
   assistantRecordSchema,
+  atisLatchRecordSchema,
   attachmentRecordSchema,
+  bridgeSessionRecordSchema,
   envelopeSchema,
   fileHistorySnapshotRecordSchema,
+  frameLinkRecordSchema,
   lastPromptRecordSchema,
   modeRecordSchema,
   permissionModeRecordSchema,
@@ -215,6 +220,58 @@ function toRecord(raw: JsonObject, seq: number): TranscriptRecord {
         ...(parsed.data.prNumber !== undefined && { prNumber: parsed.data.prNumber }),
         ...(parsed.data.prUrl !== undefined && { prUrl: parsed.data.prUrl }),
         ...(parsed.data.prRepository !== undefined && { prRepository: parsed.data.prRepository }),
+      }
+    }
+
+    case 'atis-latch': {
+      const parsed = atisLatchRecordSchema.safeParse(raw)
+      if (!parsed.success) break
+      return { ...base, kind: 'atis-latch', atis: parsed.data.atis }
+    }
+
+    case 'bridge-session': {
+      const parsed = bridgeSessionRecordSchema.safeParse(raw)
+      if (!parsed.success) break
+      return {
+        ...base,
+        kind: 'bridge-session',
+        ...(parsed.data.bridgeSessionId !== undefined && {
+          bridgeSessionId: parsed.data.bridgeSessionId,
+        }),
+        ...(parsed.data.lastSequenceNum !== undefined && {
+          lastSequenceNum: parsed.data.lastSequenceNum,
+        }),
+      }
+    }
+
+    case 'frame-link': {
+      const parsed = frameLinkRecordSchema.safeParse(raw)
+      if (!parsed.success) break
+      return {
+        ...base,
+        kind: 'frame-link',
+        ...(parsed.data.path !== undefined && { path: parsed.data.path }),
+        ...(parsed.data.frameUrl !== undefined && { frameUrl: parsed.data.frameUrl }),
+        ...(parsed.data.title !== undefined && { title: parsed.data.title }),
+        ...(parsed.data.artifactCount !== undefined && {
+          artifactCount: parsed.data.artifactCount,
+        }),
+      }
+    }
+
+    case 'artifact-comment-monitor':
+    case 'artifact-autoreact-ledger': {
+      const schema =
+        recordType === 'artifact-comment-monitor'
+          ? artifactCommentMonitorRecordSchema
+          : artifactAutoreactLedgerRecordSchema
+      const parsed = schema.safeParse(raw)
+      if (!parsed.success) break
+      return {
+        ...base,
+        kind: recordType,
+        artifactIds: Object.keys(parsed.data.artifacts ?? {}),
+        ...(parsed.data.v !== undefined && { ledgerVersion: parsed.data.v }),
       }
     }
 
