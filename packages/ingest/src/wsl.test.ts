@@ -179,12 +179,12 @@ describe('discoverWslStores', () => {
       exists: HAS_STORE,
     })
 
-    expect(result.stores).toHaveLength(1)
-    expect(result.stores[0]).toEqual({
-      launch: { host: 'wsl', distro: 'Ubuntu-24.04' },
-      root: '\\\\wsl.localhost\\Ubuntu-24.04\\home\\dangkhoi04\\.claude',
-      projectsRoot: '\\\\wsl.localhost\\Ubuntu-24.04\\home\\dangkhoi04\\.claude\\projects',
-    })
+    expect(result.found).toEqual([
+      {
+        distro: 'Ubuntu-24.04',
+        root: '\\\\wsl.localhost\\Ubuntu-24.04\\home\\dangkhoi04\\.claude',
+      },
+    ])
     // Skipped on the evidence — no ~/.claude — and not because it is called docker-desktop.
     expect(result.skipped).toEqual([{ distro: 'docker-desktop', reason: 'no-store' }])
   })
@@ -199,9 +199,7 @@ describe('discoverWslStores', () => {
     const result = discoverWslStores({ platform: 'win32', run, exists: () => true })
 
     expect(result.skipped).toEqual([{ distro: 'Legacy-Debian', reason: 'not-running' }])
-    expect(result.stores.map((store) => store.launch)).toEqual([
-      { host: 'wsl', distro: 'Ubuntu-24.04' },
-    ])
+    expect(result.found.map((location) => location.distro)).toEqual(['Ubuntu-24.04'])
     // The contract that matters: `wsl -d Legacy-Debian …` would BOOT it. Enumerating
     // stores must never start a virtual machine.
     expect(calls.some((args) => args.includes('Legacy-Debian'))).toBe(false)
@@ -233,7 +231,7 @@ describe('discoverWslStores', () => {
       return fail(-1, wslOut('Something went wrong.\r\n'))
     }
     expect(discoverWslStores({ platform: 'win32', run, exists: () => true })).toEqual({
-      stores: [],
+      found: [],
       skipped: [{ distro: 'Broken', reason: 'no-home' }],
     })
   })
@@ -242,7 +240,7 @@ describe('discoverWslStores', () => {
     const { run, calls } = recordingRunner(REFERENCE)
     // Inside a distro Sightline reaches its own store as a plain `unix` one, and there is
     // no wsl.exe to enumerate siblings with.
-    expect(discoverWslStores({ platform: 'linux', run })).toEqual({ stores: [], skipped: [] })
+    expect(discoverWslStores({ platform: 'linux', run })).toEqual({ found: [], skipped: [] })
     expect(calls).toEqual([])
   })
 })

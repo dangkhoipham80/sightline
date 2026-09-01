@@ -1,7 +1,7 @@
 import type { Dirent } from 'node:fs'
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { join, posix, win32 } from 'node:path'
+import { join } from 'node:path'
 import type { LaunchStore, SubagentInput } from '@sightline/core'
 import { agentIdFromFilename, parseHostPath } from '@sightline/core'
 import type { SkippedDistro, WslDiscoveryOptions } from './wsl.js'
@@ -51,10 +51,19 @@ export function localLaunchStore(): LaunchStore {
  * that already reached the index once. It survives because it is still an openable path on
  * Windows, so nothing errors; only string comparison against a properly-spelled path fails,
  * and that is what project grouping is made of.
+ *
+ * Appended by hand rather than with `path.win32.join` / `path.posix.join`. Importing those
+ * two sub-namespaces — `import { posix, win32 } from 'node:path'` — breaks `next build`
+ * (15.5.22) in a way that names nothing involved: the flight-client-entry plugin dies with
+ * `Cannot read properties of undefined (reading 'client')`, preceded by `The "path"
+ * argument must be of type string. Received function` from `Object.join [as then]` — a
+ * namespace object being taken for a thenable. `tsc` and `vitest` are perfectly happy with
+ * it either way. Appending one known segment needs no normalisation anyway.
  */
 export function storeAt(root: string, launch: LaunchStore = localLaunchStore()): ClaudeStore {
-  const joinForRoot = parseHostPath(root).kind === 'unix' ? posix.join : win32.join
-  return { launch, root, projectsRoot: joinForRoot(root, 'projects') }
+  const separator = parseHostPath(root).kind === 'unix' ? '/' : '\\'
+  const base = root.endsWith(separator) ? root.slice(0, -1) : root
+  return { launch, root, projectsRoot: `${base}${separator}projects` }
 }
 
 /** This machine's own `~/.claude`. */
@@ -75,10 +84,24 @@ export interface StoreDiscovery {
  * subprocess to find. WSL stores follow, and only for distros that were already running:
  * see `discoverWslStores` for why booting one to read it is not an acceptable side effect
  * of a scan.
+ *
+ * The dependency runs one way on purpose: `wsl.ts` reports bare `{distro, root}` locations
+ * and this module turns them into stores. Having `wsl.ts` import `storeAt` reads more
+ * naturally and is what this was written as first, but it made the two modules mutually
+ * dependent for no gain — `wsl.ts`'s job is talking to `wsl.exe`, and assembling a store
+ * is this module's. Keeping it a leaf costs one `map` here.
  */
 export function discoverStores(options: WslDiscoveryOptions = {}): StoreDiscovery {
   const wsl = discoverWslStores(options)
-  return { stores: [localStore(), ...wsl.stores], skipped: wsl.skipped }
+  return {
+    stores: [
+      localStore(),
+      ...wsl.found.map((location) =>
+        storeAt(location.root, { host: 'wsl', distro: location.distro }),
+      ),
+    ],
+    skipped: wsl.skipped,
+  }
 }
 
 export interface DiscoveredSession {

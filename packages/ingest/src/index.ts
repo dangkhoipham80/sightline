@@ -35,6 +35,7 @@ export type {
   WslDiscoveryOptions,
   WslResult,
   WslRunner,
+  WslStoreLocation,
 } from './wsl.js'
 export {
   decodeWslText,

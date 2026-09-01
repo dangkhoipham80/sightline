@@ -1,8 +1,6 @@
 import { execFileSync } from 'node:child_process'
 import { existsSync } from 'node:fs'
 import { toWslUnc } from '@sightline/core'
-import type { ClaudeStore } from './discover.js'
-import { storeAt } from './discover.js'
 
 /** One completed `wsl.exe` invocation. Buffers, never strings — see `decodeWslText`. */
 export interface WslResult {
@@ -27,8 +25,15 @@ export interface SkippedDistro {
   reason: SkipReason
 }
 
+/** A distro whose `~/.claude` was found, and where to read it from. */
+export interface WslStoreLocation {
+  distro: string
+  /** The store directory, reachable from Windows: `\\wsl.localhost\<distro>\…\.claude`. */
+  root: string
+}
+
 export interface WslDiscovery {
-  stores: ClaudeStore[]
+  found: WslStoreLocation[]
   skipped: SkippedDistro[]
 }
 
@@ -154,19 +159,24 @@ export interface WslDiscoveryOptions {
  * Absence is decided by data, never by a name denylist. `docker-desktop` on the reference
  * machine has `$HOME=/root` and no `~/.claude`; it is skipped for that reason alone, which
  * is the same reason that would apply to any distro that has never run Claude Code.
+ *
+ * Returns bare locations rather than `ClaudeStore`s so that this module stays a leaf:
+ * everything here is about talking to `wsl.exe`, and assembling a store is `discover.ts`'s
+ * job. Importing `storeAt` to do it here made the two files mutually dependent, which is
+ * not merely untidy — see the note on the cycle in `discover.ts`.
  */
 export function discoverWslStores(options: WslDiscoveryOptions = {}): WslDiscovery {
   const platform = options.platform ?? process.platform
   // A Sightline running *inside* a distro reaches its own store as a plain `unix` one, and
   // has no `wsl.exe` to enumerate siblings with.
-  if (platform !== 'win32') return { stores: [], skipped: [] }
+  if (platform !== 'win32') return { found: [], skipped: [] }
 
   const run = options.run ?? realRunner
   const exists = options.exists ?? existsSync
   const { installed, running } = listDistros(run)
   const isRunning = new Set(running)
 
-  const stores: ClaudeStore[] = []
+  const found: WslStoreLocation[] = []
   const skipped: SkippedDistro[] = []
 
   for (const distro of installed) {
@@ -187,8 +197,8 @@ export function discoverWslStores(options: WslDiscoveryOptions = {}): WslDiscove
       continue
     }
 
-    stores.push(storeAt(root, { host: 'wsl', distro }))
+    found.push({ distro, root })
   }
 
-  return { stores, skipped }
+  return { found, skipped }
 }
