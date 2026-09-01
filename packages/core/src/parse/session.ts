@@ -164,8 +164,13 @@ export function deriveSessionSummary(
         aiTitle = record.aiTitle
         break
 
+      // A `last-prompt` record without `lastPrompt` omits the text; it does not assert that
+      // there was no prompt. Two sessions in our corpus end on one — a `/clear` writes the
+      // bare form as the file's last record — so assigning it straight through would erase a
+      // prompt we had already read. Note that this only became reachable when the field was
+      // made optional: while it was required, the record fell into `raw` and never got here.
       case 'last-prompt':
-        lastPrompt = record.lastPrompt
+        if (record.lastPrompt !== undefined) lastPrompt = record.lastPrompt
         break
 
       case 'queue-operation':
@@ -181,6 +186,18 @@ export function deriveSessionSummary(
           ...(record.prNumber !== undefined && { prNumber: record.prNumber }),
           ...(record.prUrl !== undefined && { prUrl: record.prUrl }),
           ...(record.prRepository !== undefined && { prRepository: record.prRepository }),
+        })
+        break
+
+      // Most `frame-link` records are a bare count with no url — an artifact was updated,
+      // not published. Only the ones that name the artifact are worth listing.
+      case 'frame-link':
+        if (record.frameUrl === undefined) break
+        artifacts.push({
+          kind: 'frame-link',
+          seq: record.seq,
+          frameUrl: record.frameUrl,
+          ...(record.title !== undefined && { title: record.title }),
         })
         break
 
