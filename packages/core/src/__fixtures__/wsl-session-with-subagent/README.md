@@ -21,4 +21,19 @@ Structure is byte-for-byte faithful; identities, credentials and prose are not.
 
 ## What this fixture is here to prove
 
-<!-- Fill this in. A fixture without a stated purpose gets deleted in six months. -->
+Subagent work is not inline. This capture keeps the sibling
+`subagents/agent-<agentId>.jsonl` and its `.meta.json`, so it asserts the join that a
+parser reading only the top-level file gets wrong: `meta.toolUseId` → the `tool_use` block
+in the parent transcript that spawned the agent, rendering the sidechain as a sub-thread
+exactly where it happened.
+
+It also holds the line on three smaller things — every main-transcript line is
+`isSidechain: false` while the agent's are `true`; the session title comes from Claude's own
+`ai-title` record rather than being invented; and the three `attachment` records carry a
+`uuid` *and* a `parentUuid`, which is trap 1 sitting in plain sight.
+
+> The `signature` values in this fixture were replaced after the fact — the base64 blob on
+> a `thinking` block decodes to plain text containing the account's organization uuid, and
+> the original anonymiser only ever looked at the encoded form. Nothing else in the file
+> changed; both files are the same length they were. See `scrubSignature` in
+> `scripts/anonymise-fixture.ts`.
