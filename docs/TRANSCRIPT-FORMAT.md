@@ -40,9 +40,15 @@ Claude Code `2.1.198`. Reproduce with
 │               └── <ref>.txt                 ← spilled large tool output
 ├── file-history/
 │   └── <uuid>/<fileHash>@v<N>                ← pre-edit backups of touched files
+├── sessions/
+│   └── <pid>.json                            ← processes running *right now*
+├── daemon/                                   ← background-dispatch supervisor
 ├── history.jsonl                             ← flat log of every prompt the user typed
 └── settings.json                             ← incl. cleanupPeriodDays
 ```
+
+`sessions/` and `daemon/` are live state rather than transcript, and have their own
+document: **`docs/LIVE-SESSIONS.md`**. They are listed here only so the layout is complete.
 
 ### `<project-folder-key>`
 
@@ -280,7 +286,33 @@ the authoritative sequence. Assign a monotonic `seq` on read and sort by it.
 This is why Sightline's index is a permanent archive rather than a cache, and why first
 ingest should be run sooner rather than later on a machine with history worth keeping.
 
-### 10. `thinking` blocks are signed and mostly empty
+### 10. There is more than one `~/.claude`
+
+✅ **verified — 4 of 17 folder keys misattributed on the reference machine**
+
+`os.homedir()` finds one store. A Windows machine that also runs WSL has two, and they are
+separate installations with separate settings, separate cleanup schedules, and separate
+histories:
+
+| Store | Folder keys | Binary |
+| --- | ---: | --- |
+| `C:\Users\khoi\.claude` | 17, four of them `--wsl-localhost-Ubuntu-24-04-…` | `claude.cmd` |
+| `/home/dangkhoi04/.claude` | 3 | `/home/dangkhoi04/.local/bin/claude` |
+
+The trap is not that a store is missing — that is merely incomplete. The trap is that
+**a UNC `cwd` does not mean the session belongs to WSL.** Those four
+`--wsl-localhost-…` keys are the *Windows* `claude` invoked with a UNC working directory.
+Their transcripts live in the Windows store, and the WSL store has never heard of them.
+
+So `cwd` tells you where the work happened; only the store tells you which binary can
+resume it. Deriving one from the other produces a `wsl -d … -- claude --resume <id>` that
+runs successfully against a store containing no such session, and reports nothing.
+
+One project can legitimately appear in both stores — `App_BlueOne_v2` does here — so
+indexing one of them shows half a history with no indication the other half exists.
+See [ADR 0005](adr/0005-two-claude-code-data-stores.md).
+
+### 11. `thinking` blocks are signed and mostly empty
 
 `content[]` entries of type `thinking` carry a long `signature` and frequently an empty
 `thinking` string. Don't render the signature, don't count it toward length, and don't
@@ -315,5 +347,6 @@ read only the tail. If the file shrank or the prefix hash changed, reparse from 
 | Claude Code version | Observed | Notes |
 | --- | --- | --- |
 | `2.1.198` | Aug 2026 | Baseline for this document. Subagents in sibling files; `ai-title`, `agent-name`, `queue-operation`, `pr-link` present. Attachments participate in the uuid graph. No session-continuation mismatches and no genuinely dangling `parentUuid` observed. |
+| `2.1.198` | Sep 2026 | Second store found on the same machine (trap 10). Live session registry documented separately in `docs/LIVE-SESSIONS.md`. No transcript-format delta. |
 
 Add a row whenever a fixture for a new version is introduced, and describe the delta.

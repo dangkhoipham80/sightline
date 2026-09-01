@@ -71,12 +71,13 @@ packages/db     Drizzle + better-sqlite3 schema, migrations, FTS5
 packages/ingest scanner, watcher, incremental indexer
 packages/ai     provider abstraction, prompts, redaction, summarisation pipeline
 packages/mcp    MCP server exposing the knowledge base to any Claude Code session
+packages/terminal PTY supervisor + WebSocket sidecar: spawns `claude`, watches live sessions
 docs/           architecture, data model, transcript spec, ADRs
 ```
 
-**Dependency direction is one-way**: `core` depends on nothing internal; `db` and
-`ingest` depend on `core`; `ai` depends on `core` and `db`; `mcp` and the apps sit on
-top. Never introduce a cycle, and never let `core` import a database or network module —
+**Dependency direction is one-way**: `core` depends on nothing internal; `db`, `ingest`
+and `terminal` depend on `core`; `ai` depends on `core` and `db`; `mcp` and the apps sit
+on top. Never introduce a cycle, and never let `core` import a database or network module —
 its purity is what makes exhaustive fixture testing possible.
 
 ---
@@ -94,6 +95,12 @@ against live data:
 - The project folder name is a **lossy** encoding of the working directory
   (`_` and `.` both become `-`). Never reconstruct a path from it — read `cwd` from the
   first record instead.
+- **There is more than one `~/.claude`.** A Windows machine running WSL has two, with
+  separate settings and separate histories, and one project can appear in both. Worse, a
+  `\\wsl.localhost\…` `cwd` does **not** mean the session belongs to WSL — it is usually
+  the Windows binary with a UNC working directory, and resuming it inside WSL silently
+  finds nothing. `cwd` says where the work happened; only the store says which `claude`
+  can resume it. Never derive one from the other.
 - Subagent work lives in sibling files (`<session>/subagents/agent-*.jsonl`), not inline.
   Skipping them loses most of what actually happened.
 - `file-history-snapshot` records carry a `messageId` that can collide with a real
@@ -109,6 +116,11 @@ how the 1,345-record bug nearly got shipped as a feature.
 
 Parsing is tolerant by design: one malformed line must never take down a file, and an
 unrecognised record type is data we don't understand yet — not an error.
+
+`~/.claude/sessions/<pid>.json` is *live* state, not transcript, and has its own spec in
+`docs/LIVE-SESSIONS.md`. Two things there bite immediately: the file is keyed by pid but
+identified by `sessionId` (a resume changes the pid), and a `JSON.parse` failure means a
+read raced a write — "try again", never "session gone".
 
 ---
 
