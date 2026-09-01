@@ -101,5 +101,74 @@ Guessing upward would mean claiming a cost we cannot know.
 **Tokens are not a percentage of a limit.** The denominator is unknowable from disk: rate
 limits are per-account and Anthropic publishes only relative multipliers. Any "N tokens
 remaining" figure derived from transcripts is invented. Percentages come from
-`rate_limits` in the statusLine payload or they do not come at all — see the confidence
-ladder in the usage meter.
+`rate_limits` in the statusLine payload or they do not come at all.
+
+---
+
+## The confidence ladder
+
+Every number the meter shows is labelled with where it came from, because the three cases
+render identically and are not remotely equivalent.
+
+| Rung | Source | What may be shown |
+| --- | --- | --- |
+| `official` | `rate_limits` captured from a statusLine hook | a percentage, its reset time, and **the age of the capture** |
+| `local_estimate` | tokens from the JSONL, bucketed into a five-hour block | token counts; a cost **only** if the user supplied prices |
+| `unknown` | nothing for this window | `—` |
+
+Three rules follow from it, and all three are the kind that get "simplified" away later:
+
+1. **`unknown` renders as an em dash, never `0`.** Zero is a measurement — it says "you
+   have used nothing" — and it is the wrong answer to "we have not been told".
+2. **A `local_estimate` gets no progress bar and no percentage.** A bar implies a fraction
+   of something, and the something is exactly what cannot be known.
+3. **The age of an `official` reading is shown.** It only refreshes while a terminal with
+   the hook installed renders its status line, so it can be hours stale while looking
+   perfectly live. A percentage without its age is a number pretending to be current.
+
+The five-hour block itself is a *reconstruction*. Anthropic does not write the window
+boundary anywhere; we open a block at the first event and close it five hours later, or
+after an idle gap longer than the window. A boundary an hour out produces a number that
+looks exactly as authoritative as a correct one — which is why everything derived from it
+sits on the `local_estimate` rung and says so.
+
+## Turning on the official numbers
+
+The percentages exist only inside the statusLine hook payload. They are never written to
+disk and there is no `claude usage --json` on any version we have seen.
+
+```bash
+sightline statusline --install   # prints a snippet; paste it yourself
+```
+
+**Sightline does not write `~/.claude/settings.json`.** Rule 2 in `CLAUDE.md` has no
+exception for convenience, and this feature is the one with a real motive to want one. The
+command prints the snippet and stops. Without it the meter still works — it just has no
+`official` rung to show.
+
+Captures are appended to `~/.sightline/rate-limits.jsonl`, not to the index: the hook runs
+on every status-line render, and opening SQLite on that path would contend with a running
+scan for no benefit.
+
+`used_percentage` is validated rather than trusted. Claude Code has been observed leaking a
+Unix epoch into it ([#52326](https://github.com/anthropics/claude-code/issues/52326)); a
+value above 101 is **dropped, not clamped**, because clamping 1.7 billion to 100 would
+display "you are at your limit", a far more alarming lie than showing nothing.
+
+## Prices
+
+`~/.sightline/pricing.json`, optional, keyed by `message.model`:
+
+```json
+{ "claude-opus-5": { "input": 5, "output": 25, "cacheRead": 0.5,
+                     "cacheWrite5m": 6.25, "cacheWrite1h": 10 } }
+```
+
+Rates are USD per million tokens. **The repository ships no prices** — they change without
+notice, and a stale table is indistinguishable from a current one once it has been rendered
+as a dollar figure. No file means tokens only, and no cost line at all. A model present in
+the usage but absent from the file is *named* in the tooltip rather than skipped, so a
+partial total is never presented as a whole one.
+
+Hour limits from 2025 are deliberately not hardcoded anywhere: they have been superseded,
+and Anthropic now publishes only relative multipliers.

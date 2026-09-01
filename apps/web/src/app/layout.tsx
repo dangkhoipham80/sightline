@@ -5,6 +5,7 @@ import type { ReactNode } from 'react'
 import { InstrumentBar } from '@/components/instrument-bar'
 import { ProjectSidebar } from '@/components/project-sidebar'
 import { getDatabase, indexExists, indexPath } from '@/lib/db'
+import { buildUsageMeter } from '@/lib/usage'
 import './globals.css'
 
 // The index changes under us whenever Claude Code writes, and the sidebar reads it on every
@@ -57,14 +58,17 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   const projects = indexExists() ? listProjects(getDatabase()) : []
   const shell = projects.length > 0
+  // Built here rather than inside the sidebar so the layout stays the one place that reads
+  // the index for the chrome, and so it is skipped entirely when there is no chrome.
+  const meter = shell ? buildUsageMeter() : undefined
 
   return (
     <html lang="en" className={`${display.variable} ${sans.variable} ${mono.variable}`}>
       <body className="min-h-screen">
-        {shell && (
+        {shell && meter !== undefined && (
           <>
             <InstrumentBar indexPath={indexPath()} />
-            <ProjectSidebar projects={projects} />
+            <ProjectSidebar projects={projects} meter={meter} />
           </>
         )}
         {/* The sidebar is `fixed`, so it occupies no width in the flow and the content
