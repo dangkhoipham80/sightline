@@ -123,7 +123,7 @@ export function buildSpawnPlan(options: SpawnPlanOptions): SpawnPlanResult {
       // No `-NoProfile`: nvm / fnm / volta put their shims on PATH from the profile, and a
       // deterministic shell that cannot find `claude` is worse than a slow one that can.
       const steps: string[] = []
-      if (!spawnInPlace) steps.push(`Set-Location -LiteralPath ${quotePowerShell(target)}`)
+      if (!spawnInPlace) steps.push(setLocation(target))
       if (mode.kind === 'claude') steps.push(powerShellInvocation(binary, mode))
 
       const args = ['-NoLogo']
@@ -219,13 +219,30 @@ export function resumeCommand(options: ResumeCommandOptions): string {
   switch (store.host) {
     case 'windows': {
       const target = hostPath.kind === 'windows' ? hostPath.nativePath : hostPath.raw
-      return `Set-Location -LiteralPath ${quotePowerShell(target)}; ${powerShellInvocation(binary, mode)}`
+      return `${setLocation(target)}; ${powerShellInvocation(binary, mode)}`
     }
     case 'wsl':
       return `wsl -d ${store.distro} --cd ${quotePosix(hostPath.nativePath)} -- ${posixInvocation(binary, mode)}`
     case 'unix':
       return `cd ${quotePosix(hostPath.nativePath)} && ${posixInvocation(binary, mode)}`
   }
+}
+
+/**
+ * Move to a directory, and **stop the whole command if that fails**.
+ *
+ * `-ErrorAction Stop` is the entire point of this helper. `;` in PowerShell is a statement
+ * separator, not `&&`: a failed `Set-Location` is a non-terminating error by default, so
+ * `Set-Location <bad>; claude --resume <id>` prints a loud red error and then cheerfully
+ * runs `claude` in whatever directory the shell happened to start in. That is the same
+ * failure this module exists to prevent — a command that runs in the wrong place — merely
+ * noisier than the `cmd.exe` version of it.
+ *
+ * Observed, not reasoned about: a `--version` probe with a deliberately broken path
+ * printed the error *and* the version, from `D:\Management_Vibe_Coding`.
+ */
+function setLocation(target: string): string {
+  return `Set-Location -LiteralPath ${quotePowerShell(target)} -ErrorAction Stop`
 }
 
 /**
