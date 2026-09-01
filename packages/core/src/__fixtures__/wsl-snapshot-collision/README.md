@@ -16,4 +16,14 @@ Structure is byte-for-byte faithful; identities, credentials and prose are not.
 
 ## What this fixture is here to prove
 
-<!-- Fill this in. A fixture without a stated purpose gets deleted in six months. -->
+Trap 3, in five lines of real transcript: the `file-history-snapshot` record's `messageId`
+is *also* the `uuid` of a `user` record two lines below it. Not a constructed edge case —
+this is simply what a short session looks like.
+
+It also pins down how narrow the trap is. Snapshots carry no `uuid` of their own, so a
+parser indexing on `uuid` is already immune; the collision only bites code that reaches for
+`messageId ?? uuid`. `fixtures.test.ts` asserts both halves — that the collision is present,
+and that the tree indexes the message rather than the snapshot.
+
+The UNC `cwd` carries a third assertion: that the working directory is read off the record
+rather than reconstructed from the lossy folder key (trap 2).
