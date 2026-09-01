@@ -134,6 +134,39 @@ describe('parseRecords content handling', () => {
       outputTokens: 20,
       cacheReadTokens: 30,
       cacheCreationTokens: 40,
+      // No `cache_creation` breakdown on this record, so the whole cache write lands in the
+      // cheaper 5-minute bucket rather than being guessed upward.
+      cacheCreation5mTokens: 40,
+      cacheCreation1hTokens: 0,
+    })
+  })
+
+  it('splits cache writes by ttl when the breakdown is present', () => {
+    const result = parseRecords([
+      line({
+        type: 'assistant',
+        uuid: 'a1',
+        message: {
+          role: 'assistant',
+          content: [],
+          usage: {
+            input_tokens: 1,
+            output_tokens: 2,
+            cache_read_input_tokens: 3,
+            cache_creation_input_tokens: 100,
+            cache_creation: {
+              ephemeral_5m_input_tokens: 70,
+              ephemeral_1h_input_tokens: 30,
+            },
+          },
+        },
+      }),
+    ])
+    const record = result.records[0]
+    expect(record?.kind === 'assistant' && record.usage).toMatchObject({
+      cacheCreationTokens: 100,
+      cacheCreation5mTokens: 70,
+      cacheCreation1hTokens: 30,
     })
   })
 })

@@ -254,11 +254,26 @@ function readUsage(usage: {
   output_tokens?: number | undefined
   cache_read_input_tokens?: number | undefined
   cache_creation_input_tokens?: number | undefined
+  cache_creation?:
+    | {
+        ephemeral_5m_input_tokens?: number | undefined
+        ephemeral_1h_input_tokens?: number | undefined
+      }
+    | undefined
 }): TokenUsage {
+  const total = usage.cache_creation_input_tokens ?? 0
+  const fiveMinute = usage.cache_creation?.ephemeral_5m_input_tokens
+  const oneHour = usage.cache_creation?.ephemeral_1h_input_tokens
+
   return {
     inputTokens: usage.input_tokens ?? 0,
     outputTokens: usage.output_tokens ?? 0,
     cacheReadTokens: usage.cache_read_input_tokens ?? 0,
-    cacheCreationTokens: usage.cache_creation_input_tokens ?? 0,
+    cacheCreationTokens: total,
+    // With no breakdown, attribute the lot to the cheaper 5-minute bucket. A meter that
+    // guesses high is claiming a cost it cannot know, which is the failure this whole
+    // feature exists to avoid.
+    cacheCreation5mTokens: fiveMinute ?? (oneHour === undefined ? total : total - oneHour),
+    cacheCreation1hTokens: oneHour ?? 0,
   }
 }

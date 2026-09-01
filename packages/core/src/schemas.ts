@@ -69,6 +69,17 @@ export const usageSchema = z.looseObject({
   output_tokens: z.number().optional(),
   cache_read_input_tokens: z.number().optional(),
   cache_creation_input_tokens: z.number().optional(),
+  /**
+   * Present on all 57,073 assistant records observed, and the only place the cache-write
+   * TTL split is recorded. Optional anyway: it is newer than the flat total beside it, and
+   * an older transcript is still a transcript.
+   */
+  cache_creation: z
+    .looseObject({
+      ephemeral_5m_input_tokens: z.number().optional(),
+      ephemeral_1h_input_tokens: z.number().optional(),
+    })
+    .optional(),
 })
 
 export const userMessageSchema = z.looseObject({
