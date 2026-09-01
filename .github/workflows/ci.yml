@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: verify (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+
+    strategy:
+      # A red Windows leg must not hide a green Linux one, or the reverse. On a matrix
+      # this new, knowing *which* platform broke is most of the signal.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint
+        run: pnpm lint
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Test
+        run: pnpm test
+
+      - name: Build
+        run: pnpm build
+
+      # Rule 2 — never write to ~/.claude — is enforced by
+      # `packages/ingest/src/read-only.test.ts`, which runs a real ingest over a real
+      # directory tree and compares every byte before and after. It runs as part of
+      # `pnpm test` above, on both legs.
+      #
+      # There used to be a grep for `writeFile` near the string `.claude` here instead.
+      # It never ran, and when it finally did it failed on a *comment* in `watch.ts`
+      # explaining why there is deliberately no `unlink` handler — while remaining blind
+      # to any real write built from a variable. A heuristic over source text cannot
+      # answer a question about runtime behaviour.

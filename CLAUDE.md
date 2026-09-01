@@ -28,7 +28,13 @@ Sightline is **read-only** with respect to Claude Code's own data directory. It 
 `~/.claude/projects/**`, `~/.claude/file-history/**` and `~/.claude/settings.json`. It
 writes only to its own data directory (`~/.sightline/` by default) and to files the user
 explicitly asks it to export. Any code path that opens a file under `~/.claude` for
-writing is a bug, and there is a test asserting this.
+writing is a bug.
+
+`packages/ingest/src/read-only.test.ts` enforces it the only way that actually settles the
+question: it builds a directory shaped like a real `~/.claude` — transcripts, subagents,
+`settings.json`, `history.jsonl`, `file-history/`, the live session registry —
+fingerprints every byte, runs a full ingest over it, and fingerprints again. Extend that
+fixture when you add a code path that reads something new.
 
 ### 3. Never fix a failing test by editing the fixture
 
@@ -56,8 +62,12 @@ pnpm build            # turbo build, topologically ordered
 pnpm dev              # run the web app + watchers
 ```
 
-`pnpm verify` is the gate. CI runs exactly this. A PR that hasn't passed it locally is
-not ready.
+`pnpm verify` is the gate. A PR that hasn't passed it locally is not ready.
+
+CI runs `verify` plus `build`, on **Ubuntu and Windows**, and asserts that no source file
+opens a write path under `~/.claude`. The Windows leg is not decoration: from
+`packages/terminal` onward this repo carries platform-specific code — ConPTY, PowerShell
+quoting, `taskkill /T /F` — that a Linux-only run cannot see break.
 
 ---
 
