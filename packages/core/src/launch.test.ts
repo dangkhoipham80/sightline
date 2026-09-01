@@ -12,6 +12,13 @@ const WINDOWS_CWD = 'D:\\Management_Vibe_Coding'
 const UNC_CWD = '\\\\wsl.localhost\\Ubuntu-24.04\\home\\dangkhoi04\\code\\DailyTaskGame'
 const WSL_CWD = '/home/dangkhoi04/code/App_BlueOne_v2'
 
+/**
+ * Spelled out once, so the `-ErrorAction Stop` cannot be quietly dropped from four
+ * assertions at a time. Without it a failed move still runs `claude`, in the wrong
+ * directory — observed against a live shell, not theorised.
+ */
+const cd = (path: string) => `Set-Location -LiteralPath '${path}' -ErrorAction Stop`
+
 function plan(overrides: Partial<SpawnPlanOptions> & Pick<SpawnPlanOptions, 'hostPath' | 'store'>) {
   const result = buildSpawnPlan({
     mode: { kind: 'claude' },
@@ -59,7 +66,7 @@ describe('buildSpawnPlan — windows store', () => {
   it('keeps a UNC working directory on Windows and moves with Set-Location', () => {
     const result = plan({ hostPath: parseHostPath(UNC_CWD), store: WINDOWS })
     expect(result.file).toBe('powershell.exe')
-    expect(result.args[2]).toBe(`Set-Location -LiteralPath '${UNC_CWD}'; & 'claude'`)
+    expect(result.args[2]).toBe(`${cd(UNC_CWD)}; & 'claude'`)
     // cmd.exe refuses a UNC cwd and silently lands in C:\Windows, so it never gets one.
     expect(result.cwd).toBe(LAUNCH_DIR)
   })
@@ -70,12 +77,7 @@ describe('buildSpawnPlan — windows store', () => {
       store: WINDOWS,
       mode: { kind: 'shell' },
     })
-    expect(moved.args).toEqual([
-      '-NoLogo',
-      '-NoExit',
-      '-Command',
-      `Set-Location -LiteralPath '${UNC_CWD}'`,
-    ])
+    expect(moved.args).toEqual(['-NoLogo', '-NoExit', '-Command', cd(UNC_CWD)])
 
     const inPlace = plan({
       hostPath: parseHostPath(WINDOWS_CWD),
@@ -249,6 +251,17 @@ describe('buildSpawnPlan — invariants that hold for every plan', () => {
     }
   })
 
+  it('never lets a failed move fall through into running claude', () => {
+    // `;` is a statement separator in PowerShell, not `&&`, and a failed Set-Location is
+    // non-terminating by default. Observed against a live shell: a broken path printed a
+    // red error and then ran `claude` anyway, from the directory the shell started in.
+    for (const options of every) {
+      const command = plan(options).args.at(-1) ?? ''
+      if (!command.includes('Set-Location')) continue
+      expect(command).toContain('-ErrorAction Stop')
+    }
+  })
+
   it('always sets a terminal-shaped TERM', () => {
     for (const options of every) {
       expect(plan(options).env['TERM']).toBe('xterm-256color')
@@ -296,14 +309,14 @@ describe('resumeCommand', () => {
   it('stays on Windows for a UNC path recorded by the Windows binary', () => {
     expect(
       resumeCommand({ hostPath: parseHostPath(UNC_CWD), store: WINDOWS, sessionId: 'abc-123' }),
-    ).toBe(`Set-Location -LiteralPath '${UNC_CWD}'; & 'claude' '--resume' 'abc-123'`)
+    ).toBe(`${cd(UNC_CWD)}; & 'claude' '--resume' 'abc-123'`)
   })
 
   /** `cd /d` is cmd-only syntax and fails in PowerShell, which is what Windows opens. */
   it('uses PowerShell syntax on Windows', () => {
     expect(
       resumeCommand({ hostPath: parseHostPath(WINDOWS_CWD), store: WINDOWS, sessionId: 'abc' }),
-    ).toBe(`Set-Location -LiteralPath '${WINDOWS_CWD}'; & 'claude' '--resume' 'abc'`)
+    ).toBe(`${cd(WINDOWS_CWD)}; & 'claude' '--resume' 'abc'`)
   })
 
   it('quotes POSIX paths containing spaces', () => {
