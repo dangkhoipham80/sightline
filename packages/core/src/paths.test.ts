@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   encodeProjectFolderKey,
   isSameOrDescendant,
+  matchHostPath,
   parseHostPath,
-  resumeCommand,
 } from './paths.js'
 
 describe('parseHostPath', () => {
@@ -97,33 +97,43 @@ describe('isSameOrDescendant', () => {
   })
 })
 
-describe('resumeCommand', () => {
-  it('re-enters the distro for WSL sessions rather than cd-ing to the UNC path', () => {
-    const hostPath = parseHostPath('\\\\wsl.localhost\\Ubuntu-24.04\\home\\dev\\code\\app')
-    expect(resumeCommand({ hostPath, sessionId: 'abc-123' })).toBe(
-      'wsl -d Ubuntu-24.04 --cd /home/dev/code/app -- claude --resume abc-123',
-    )
+describe('matchHostPath', () => {
+  // Shaped after the real corpus: App_BlueOne_v2 is indexed as a project and so is
+  // blueone-v1 beneath it.
+  const projects = [
+    { id: 'outer', path: '/home/dev/code/App_BlueOne_v2' },
+    { id: 'inner', path: '/home/dev/code/App_BlueOne_v2/blueone-v1' },
+    { id: 'windows', path: 'D:\\Management_Vibe_Coding' },
+  ]
+
+  it('prefers the nearest ancestor when projects nest', () => {
+    expect(matchHostPath(projects, '/home/dev/code/App_BlueOne_v2/blueone-v1/src')).toBe('inner')
+    expect(matchHostPath(projects, '/home/dev/code/App_BlueOne_v2/docs')).toBe('outer')
   })
 
-  it('uses cd /d on Windows so a drive change actually happens', () => {
-    const hostPath = parseHostPath('D:\\Management_Vibe_Coding')
-    expect(resumeCommand({ hostPath, sessionId: 'abc-123' })).toBe(
-      'cd /d "D:\\Management_Vibe_Coding" && claude --resume abc-123',
-    )
+  it('matches a project by its own path', () => {
+    expect(matchHostPath(projects, 'D:\\Management_Vibe_Coding')).toBe('windows')
   })
 
-  it('quotes POSIX paths containing spaces', () => {
-    const hostPath = parseHostPath('/home/dev/my code')
-    expect(resumeCommand({ hostPath, sessionId: 'x' })).toBe(
-      "cd '/home/dev/my code' && claude --resume x",
-    )
+  it('matches Windows paths case-insensitively', () => {
+    expect(matchHostPath(projects, 'd:\\management_vibe_coding\\packages\\core')).toBe('windows')
   })
 
-  it('honours a custom binary name', () => {
-    const hostPath = parseHostPath('/srv/app')
-    expect(resumeCommand({ hostPath, sessionId: 'x', binary: 'claude-beta' })).toContain(
-      'claude-beta --resume x',
-    )
+  it('returns undefined rather than guessing when nothing contains the cwd', () => {
+    expect(matchHostPath(projects, 'C:\\Users\\dev')).toBeUndefined()
+    expect(matchHostPath([], '/home/dev')).toBeUndefined()
+  })
+
+  it('never matches a POSIX cwd against a UNC project, or the reverse', () => {
+    const unc = [{ id: 'unc', path: '\\\\wsl.localhost\\Ubuntu-24.04\\home\\dev\\app' }]
+    // Same distro, same directory, different *shape* — these are the same place, but
+    // `isSameOrDescendant` compares within a host kind, and the caller that has a bare
+    // POSIX cwd is reading a WSL store where the UNC form never appears.
+    expect(matchHostPath(unc, '/home/dev/app')).toBeUndefined()
+  })
+
+  it('does not match a sibling sharing a name prefix', () => {
+    expect(matchHostPath(projects, '/home/dev/code/App_BlueOne_v2_old/src')).toBeUndefined()
   })
 })
 

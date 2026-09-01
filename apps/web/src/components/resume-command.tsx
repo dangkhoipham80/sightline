@@ -3,13 +3,18 @@
 import { useEffect, useState } from 'react'
 
 /**
- * Hand back the command that reopens this session where it ran.
+ * Copy the command that reopens this session where it ran.
  *
  * `claude --resume` scopes to the directory you are standing in, which is exactly why a
  * session found here is otherwise awkward to get back into: you have to know where it was.
- * The `cd` is half the value of the button.
+ * Getting *there* is half the value of the button.
+ *
+ * The command is built on the server by `sessionResumeCommand`, because building it
+ * correctly needs to know which `~/.claude` the session came from. This component used to
+ * derive it from the working directory, which produced a command that ran successfully
+ * and found nothing for every session whose cwd was a WSL UNC path. See ADR 0005.
  */
-export function ResumeCommand({ sessionId, cwd }: { sessionId: string; cwd: string | null }) {
+export function ResumeCommand({ command }: { command: string }) {
   const [copied, setCopied] = useState(false)
 
   useEffect(() => {
@@ -17,9 +22,6 @@ export function ResumeCommand({ sessionId, cwd }: { sessionId: string; cwd: stri
     const timer = setTimeout(() => setCopied(false), 1600)
     return () => clearTimeout(timer)
   }, [copied])
-
-  const command =
-    cwd === null ? `claude --resume ${sessionId}` : `cd ${cwd} && claude --resume ${sessionId}`
 
   async function copy() {
     try {

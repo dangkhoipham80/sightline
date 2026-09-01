@@ -10,6 +10,17 @@
  */
 
 export { PRODUCT_NAME, SIGHTLINE_SCHEMA_VERSION } from './constants.js'
+export type {
+  LaunchMode,
+  LaunchPlatform,
+  LaunchStore,
+  ResumeCommandOptions,
+  SpawnPlan,
+  SpawnPlanFailure,
+  SpawnPlanOptions,
+  SpawnPlanResult,
+} from './launch.js'
+export { buildSpawnPlan, resumeCommand } from './launch.js'
 export { flattenText, hasThinking, normaliseContent, toolUseBlocks } from './parse/content.js'
 export type { Lineage, LineageMember } from './parse/lineage.js'
 export { linkLineages } from './parse/lineage.js'
@@ -23,14 +34,15 @@ export type { ParsedSession, ParseSessionInput } from './parse/transcript.js'
 export { parseSession } from './parse/transcript.js'
 export type { MessageNode, MessageTree } from './parse/tree.js'
 export { buildMessageTree, flattenTree } from './parse/tree.js'
-export type { HostKind, HostPath, ResumeCommandOptions } from './paths.js'
+export type { HostKind, HostPath } from './paths.js'
 export {
   encodeProjectFolderKey,
   isSameOrDescendant,
+  matchHostPath,
   normalisePathForComparison,
   parseHostPath,
-  resumeCommand,
 } from './paths.js'
+export { quotePosix, quotePowerShell } from './shell.js'
 export type {
   AgentNameRecord,
   Artifact,

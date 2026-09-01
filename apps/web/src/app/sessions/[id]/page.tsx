@@ -5,6 +5,7 @@ import { ResumeCommand } from '@/components/resume-command'
 import { Transcript } from '@/components/transcript/transcript'
 import { indexExists, indexPath } from '@/lib/db'
 import { count, duration, shortPath, stamp } from '@/lib/format'
+import { sessionResumeCommand } from '@/lib/launch'
 import { loadSessionPage } from '@/lib/session'
 
 export const dynamic = 'force-dynamic'
@@ -24,6 +25,7 @@ export default async function SessionPage({
   if (data === undefined) notFound()
 
   const { session, project, view, parent, continuations, focus } = data
+  const resume = sessionResumeCommand(session)
 
   return (
     <>
@@ -78,9 +80,11 @@ export default async function SessionPage({
                 </span>
               </>
             )}
-            <span className="ms-auto">
-              <ResumeCommand sessionId={session.id} cwd={session.cwd} />
-            </span>
+            {resume !== null && (
+              <span className="ms-auto">
+                <ResumeCommand command={resume} />
+              </span>
+            )}
           </div>
 
           {(parent !== undefined || continuations.length > 0) && (

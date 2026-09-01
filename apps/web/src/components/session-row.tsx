@@ -2,6 +2,7 @@ import type { SessionRow as Session } from '@sightline/db'
 import Link from 'next/link'
 import { ResumeCommand } from '@/components/resume-command'
 import { count, duration, stamp } from '@/lib/format'
+import { sessionResumeCommand } from '@/lib/launch'
 
 /** Anything the transcript did not name gets its id, never an invented title. */
 function title(session: Session): string {
@@ -9,6 +10,7 @@ function title(session: Session): string {
 }
 
 export function SessionRow({ session }: { session: Session }) {
+  const resume = sessionResumeCommand(session)
   const facts: Array<[string, string]> = [
     [count(session.messageCount), 'msgs'],
     [count(session.toolCallCount), 'tools'],
@@ -52,9 +54,13 @@ export function SessionRow({ session }: { session: Session }) {
             <span className="font-mono text-[12px] text-dim">{session.models.join(' ')}</span>
           </>
         )}
-        <div className="ms-auto">
-          <ResumeCommand sessionId={session.id} cwd={session.cwd} />
-        </div>
+        {/* A session whose transcript never recorded a cwd has nowhere honest to send
+            you, so it gets no button rather than a command that lands anywhere. */}
+        {resume !== null && (
+          <div className="ms-auto">
+            <ResumeCommand command={resume} />
+          </div>
+        )}
       </div>
     </li>
   )
