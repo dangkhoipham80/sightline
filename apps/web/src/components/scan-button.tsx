@@ -27,7 +27,19 @@ export function ScanButton({ label = 'Rescan' }: { label?: string }) {
         <span className="font-mono text-[11px] text-muted">
           {count(report.ingested)} indexed
           <span className="text-dim"> · {count(report.skipped)} unchanged</span>
+          {/* Only worth saying once there is more than one — on a machine without WSL the
+              store count is always 1 and naming it every scan is noise. */}
+          {report.stores > 1 && <span className="text-dim"> · {report.stores} stores</span>}
           {report.failed > 0 && <span className="text-signal"> · {report.failed} failed</span>}
+          {/* A store we declined to read is history the owner has and this index does not.
+              Naming it is the entire reason discovery reports skips instead of just
+              returning a shorter list. */}
+          {report.gaps.map((gap) => (
+            <span key={gap.label} className="text-signal" title={`${gap.label}: ${gap.detail}`}>
+              {' '}
+              · {gap.label} not indexed
+            </span>
+          ))}
         </span>
       )}
       {failed && (

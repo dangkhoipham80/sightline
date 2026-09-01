@@ -5,9 +5,9 @@ import { encodeProjectFolderKey } from '@sightline/core'
 import type { SightlineDatabase } from '@sightline/db'
 import { listProjects, listSessions, openDatabase, search } from '@sightline/db'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import type { ClaudeStore } from './discover.js'
+import type { ClaudeStore, StoreDiscovery } from './discover.js'
 import { storeAt } from './discover.js'
-import { scan } from './scan.js'
+import { scan, scanAll } from './scan.js'
 
 let claudeDir: string
 let store: ClaudeStore
@@ -367,5 +367,161 @@ describe('scan', () => {
     const stores = listSessions(db).map((s) => s.store)
     expect(stores).toContainEqual({ host: 'wsl', distro: 'Ubuntu-24.04' })
     expect(stores).toContainEqual({ host: 'windows' })
+  })
+})
+
+describe('scanAll', () => {
+  let secondDir: string
+
+  beforeEach(() => {
+    secondDir = mkdtempSync(join(tmpdir(), 'sightline-scan-second-'))
+  })
+
+  afterEach(() => {
+    rmSync(secondDir, { recursive: true, force: true })
+  })
+
+  /** Stand in for `discoverStores` without a real `~/.claude` or a real distro. */
+  function fakeDiscovery(discovery: Partial<StoreDiscovery>): () => StoreDiscovery {
+    return () => ({ stores: [], skipped: [], ...discovery })
+  }
+
+  const windowsStore = (): ClaudeStore => storeAt(claudeDir, { host: 'windows' })
+  const wslStore = (): ClaudeStore => storeAt(secondDir, { host: 'wsl', distro: 'Ubuntu-24.04' })
+
+  /**
+   * The headline, and the bug this exists to close: the web app called `scan` with no store,
+   * which reads the local one and stops. Every WSL session was absent from the index while
+   * the UI reported a clean, successful scan.
+   */
+  it('indexes every discovered store, not just the local one', () => {
+    const windowsRepo = makeRepo('windows-side')
+    const wslRepo = makeRepo('wsl-side')
+    writeTranscriptInto(claudeDir, windowsRepo, 'session-w', conversation(windowsRepo, 'alpha'))
+    writeTranscriptInto(secondDir, wslRepo, 'session-l', conversation(wslRepo, 'beta'))
+
+    const result = scanAll(db, {
+      discover: fakeDiscovery({ stores: [windowsStore(), wslStore()] }),
+    })
+
+    expect(result.discovered).toBe(2)
+    expect(result.ingested).toBe(2)
+    expect(search(db, 'alpha')).toHaveLength(1)
+    expect(search(db, 'beta')).toHaveLength(1)
+
+    const stores = listSessions(db).map((s) => s.store)
+    expect(stores).toContainEqual({ host: 'windows' })
+    expect(stores).toContainEqual({ host: 'wsl', distro: 'Ubuntu-24.04' })
+  })
+
+  /**
+   * `App_BlueOne_v2` is one project worked on from inside the distro *and* from Windows
+   * over the share — the case ADR 0005 is built around. Each store's own scan sees one
+   * project, so summing the two reports two; the shared indexer makes it the one it is.
+   */
+  it('counts a project worked on from two stores once, not once per store', () => {
+    const posix = '/home/me/code/app'
+    const unc = '\\\\wsl.localhost\\Ubuntu-24.04\\home\\me\\code\\app'
+    writeTranscriptInto(secondDir, posix, 'session-inside', conversation(posix, 'inside'))
+    writeTranscriptInto(claudeDir, unc, 'session-outside', conversation(unc, 'outside'))
+
+    const result = scanAll(db, {
+      discover: fakeDiscovery({ stores: [windowsStore(), wslStore()] }),
+    })
+
+    expect(result.ingested).toBe(2)
+    expect(listProjects(db)).toHaveLength(1)
+    expect(result.projects).toBe(1)
+  })
+
+  it('counts genuinely separate projects across stores separately', () => {
+    const windowsRepo = makeRepo('windows-side')
+    const wslRepo = makeRepo('wsl-side')
+    writeTranscriptInto(claudeDir, windowsRepo, 'session-w', conversation(windowsRepo, 'alpha'))
+    writeTranscriptInto(secondDir, wslRepo, 'session-l', conversation(wslRepo, 'beta'))
+
+    const result = scanAll(db, {
+      discover: fakeDiscovery({ stores: [windowsStore(), wslStore()] }),
+    })
+
+    expect(result.projects).toBe(2)
+    expect(listProjects(db)).toHaveLength(2)
+  })
+
+  /**
+   * A stopped distro is a store the owner *has* history in and we declined to read. Passing
+   * the reason through is the whole point of `discoverStores` returning skips: the UI can
+   * say "Legacy-Debian is not running" instead of quietly showing fewer projects.
+   */
+  it('reports distros that were skipped, so a shorter index is never silent', () => {
+    const result = scanAll(db, {
+      discover: fakeDiscovery({
+        stores: [windowsStore()],
+        skipped: [
+          { distro: 'Legacy-Debian', reason: 'not-running' },
+          { distro: 'docker-desktop', reason: 'no-store' },
+        ],
+      }),
+    })
+
+    expect(result.skippedDistros).toEqual([
+      { distro: 'Legacy-Debian', reason: 'not-running' },
+      { distro: 'docker-desktop', reason: 'no-store' },
+    ])
+  })
+
+  /**
+   * The 9P share backing a WSL store vanishes the instant the distro shuts down, and by
+   * then the local store's work is already committed. Aborting would throw away a good
+   * report over an unreachable share, so the failure is recorded and the run continues.
+   */
+  it('records a store it could not read and still indexes the others', () => {
+    const repo = makeRepo('reachable')
+    writeTranscriptInto(claudeDir, repo, 'session-w', conversation(repo, 'alpha'))
+
+    // A file where the projects directory should be: `existsSync` passes, `readdirSync`
+    // throws ENOTDIR. A real throw from real fs code rather than a stubbed rejection.
+    const brokenRoot = join(secondDir, 'broken')
+    mkdirSync(brokenRoot, { recursive: true })
+    writeFileSync(join(brokenRoot, 'projects'), 'not a directory', 'utf8')
+
+    const result = scanAll(db, {
+      discover: fakeDiscovery({
+        stores: [storeAt(brokenRoot, { host: 'wsl', distro: 'Ubuntu-24.04' }), windowsStore()],
+      }),
+    })
+
+    expect(result.ingested).toBe(1)
+    expect(search(db, 'alpha')).toHaveLength(1)
+
+    const [broken, ok] = result.stores
+    expect(broken?.error).toMatch(/ENOTDIR|ENOENT|Error/)
+    expect(broken?.result).toBeUndefined()
+    expect(ok?.error).toBeUndefined()
+    expect(ok?.result?.ingested).toBe(1)
+  })
+
+  it('forwards force to every store', () => {
+    const windowsRepo = makeRepo('windows-side')
+    const wslRepo = makeRepo('wsl-side')
+    writeTranscriptInto(claudeDir, windowsRepo, 'session-w', conversation(windowsRepo, 'alpha'))
+    writeTranscriptInto(secondDir, wslRepo, 'session-l', conversation(wslRepo, 'beta'))
+    const discover = fakeDiscovery({ stores: [windowsStore(), wslStore()] })
+
+    scanAll(db, { discover })
+    expect(scanAll(db, { discover })).toMatchObject({ ingested: 0, skipped: 2 })
+    expect(scanAll(db, { discover, force: true })).toMatchObject({ ingested: 2, skipped: 0 })
+  })
+
+  it('reports which store each outcome came from', () => {
+    const result = scanAll(db, {
+      discover: fakeDiscovery({ stores: [windowsStore(), wslStore()] }),
+    })
+
+    expect(result.stores.map((s) => s.store)).toEqual([
+      { host: 'windows' },
+      { host: 'wsl', distro: 'Ubuntu-24.04' },
+    ])
+    expect(result.stores.map((s) => s.root)).toEqual([claudeDir, secondDir])
   })
 })

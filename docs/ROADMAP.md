@@ -30,7 +30,8 @@ independent and either can go first.
 | 12 | `fix/host-aware-commands` | `LaunchStore` in `core`; fix `resumeCommand` for the Windows-store/UNC-cwd case and its cmd-only `cd /d`; add `buildSpawnPlan` + `matchHostPath`; wire the two web components to `core` | ✅ |
 | 13 | `chore/ci` | Activate `.github/workflows-pending/ci.yml`, add a `windows-latest` leg | ✅ |
 | 14a | `feat/store-aware-ingest` | Ingest carries a `LaunchStore` through to `sessions.store_kind` / `store_distro` / `store_root`; two spellings of one WSL directory resolve to one project; schema bump + re-ingest | ✅ |
-| 14b | `feat/wsl-store-discovery` | Enumerate distros with `wsl.exe -l -q`, find each one's `$HOME`, index its store over `\\wsl.localhost\…`; polling watcher for the 9P share | 🚧 |
+| 14b | `feat/wsl-store-discovery` | Enumerate distros with `wsl.exe -l -q`, find each one's `$HOME`, index its store over `\\wsl.localhost\…`; polling watcher for the 9P share | ✅ |
+| 14c | `feat/scan-every-store` | `scanAll` — the Rescan button reads every discovered store, not just the local one; skipped distros surfaced instead of silently shortening the index | 🚧 |
 | 15 | `feat/project-sidebar` | Persistent sidebar grouped by store, `InstrumentBar` hoisted into the layout, CONSOLE/REVIEW tabs per project | |
 | 16 | `feat/usage-meter` | `token_events` migration, 5-hour blocks, `sightline statusline` capture, pricing loader, sidebar footer | |
 | 17 | `feat/terminal-sidecar` | `packages/terminal`: `ws` server, rendezvous, origin allowlist, ticket HMAC, protocol codec. No PTY yet | |

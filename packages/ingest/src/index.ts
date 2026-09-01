@@ -24,8 +24,15 @@ export type { ProjectIdentity } from './grouping.js'
 export { findGitRoot, hostAccessPath, hostPathForStore, resolveProject } from './grouping.js'
 export type { Indexer, IngestOutcome } from './indexer.js'
 export { createIndexer } from './indexer.js'
-export type { ScanOptions, ScanProgress, ScanResult } from './scan.js'
-export { scan } from './scan.js'
+export type {
+  ScanAllOptions,
+  ScanAllResult,
+  ScanOptions,
+  ScanProgress,
+  ScanResult,
+  StoreScanOutcome,
+} from './scan.js'
+export { scan, scanAll } from './scan.js'
 export type { IndexedEvent, WatchError, Watcher, WatchOptions, WatchTarget } from './watch.js'
 export { pollingOptionsFor, resolveWatchTarget, watch } from './watch.js'
 export type {

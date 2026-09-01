@@ -14,7 +14,7 @@ import { encodeProjectFolderKey } from '@sightline/core'
 import { openDatabase, type SightlineDatabase } from '@sightline/db'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { storeAt } from './discover.js'
-import { scan } from './scan.js'
+import { scan, scanAll } from './scan.js'
 
 /**
  * Rule 2 in `CLAUDE.md`, enforced rather than asserted in prose: **Sightline never writes
@@ -173,6 +173,30 @@ describe("Claude Code's data directory", () => {
     const result = scan(db, { store: storeAt(claudeDir), force: true })
     expect(result.ingested).toBe(1)
     expect(result.skipped).toBe(0)
+
+    expect(fingerprint(claudeDir)).toEqual(before)
+  })
+
+  /**
+   * `scanAll` is what the web app calls, so it is the path that has to be proven read-only —
+   * asserting it about `scan` alone would leave the entry point users actually reach
+   * uncovered. Discovery is faked to point at the fixture rather than the real machine:
+   * the guarantee under test is about the store walking code, not about `wsl.exe`.
+   */
+  it('is unchanged by a multi-store scan, which is the path the app takes', () => {
+    buildClaudeDirectory()
+    const before = fingerprint(claudeDir)
+    expect(before.size).toBeGreaterThan(5)
+
+    const result = scanAll(db, {
+      force: true,
+      discover: () => ({
+        stores: [storeAt(claudeDir, { host: 'windows' })],
+        skipped: [{ distro: 'Legacy-Debian', reason: 'not-running' }],
+      }),
+    })
+    expect(result.ingested).toBe(1)
+    expect(result.failed).toEqual([])
 
     expect(fingerprint(claudeDir)).toEqual(before)
   })
